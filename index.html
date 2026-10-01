@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buscador de Pokémon · PokeAPI</title>
+    <meta name="description" content="Buscador de Pokémon con índice invertido, filtros facetados y búsqueda en español e inglés sobre datos de PokeAPI." />
+    <!-- El índice hace falta antes de poder pintar nada, así que se pide ya, en
+         paralelo con el JavaScript, en lugar de esperar a que arranque React. -->
+    <link rel="preload" as="fetch" type="application/json" crossorigin href="/data/pokedex.v1.json" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

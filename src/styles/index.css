@@ -1,0 +1,763 @@
+/* ---------------------------------------------------------------------------
+   Paleta y ajustes globales
+   Un solo juego de variables, redefinido para modo oscuro más abajo.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --border: #e2e6ef;
+  --text: #16181d;
+  --text-soft: #646b7a;
+  --accent: #d63a2f;
+  --accent-soft: #fdecea;
+  --skeleton: #e8ebf2;
+  --shadow: 0 1px 2px rgb(16 20 30 / 6%), 0 8px 20px rgb(16 20 30 / 6%);
+
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12141a;
+    --surface: #1b1e26;
+    --border: #2a2f3a;
+    --text: #eef0f5;
+    --text-soft: #99a1b3;
+    --accent: #ff6b5e;
+    --accent-soft: #3a1f1d;
+    --skeleton: #262b36;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 20px rgb(0 0 0 / 25%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------- */
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.app__header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.app__title {
+  margin: 0;
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
+  letter-spacing: -0.02em;
+}
+
+.app__subtitle {
+  margin: 0.5rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+/* --- Barra de búsqueda ----------------------------------------------------- */
+
+.search-bar {
+  max-width: 540px;
+  margin: 0 auto;
+}
+
+.search-bar__label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.search-bar__field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s ease;
+}
+
+.search-bar__field:focus-within {
+  border-color: var(--accent);
+}
+
+.search-bar__icon {
+  font-size: 1.25rem;
+  color: var(--text-soft);
+}
+
+.search-bar__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.85rem 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.search-bar__input::-webkit-search-cancel-button {
+  display: none; /* usamos nuestro propio botón de borrar */
+}
+
+.search-bar__clear {
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.search-bar__clear:hover {
+  color: var(--accent);
+}
+
+.search-bar__hint {
+  margin: 0.5rem 0 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+/* --- Contador de resultados ------------------------------------------------ */
+
+.counter {
+  margin: 1.75rem 0 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Cuadrícula y tarjetas ------------------------------------------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.9rem 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.card__art {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+.card__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.card__img-skeleton,
+.card__img-missing {
+  width: 72%;
+  height: 72%;
+  border-radius: 50%;
+  background: var(--skeleton);
+  display: grid;
+  place-items: center;
+  color: var(--text-soft);
+  font-size: 1.5rem;
+}
+
+.card__img-skeleton {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.card__id {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Por qué está aquí este resultado. Solo aparece al buscar con una descripción,
+   así que no debe competir con el nombre: va al pie, pequeño y atenuado. */
+.card__why {
+  margin: 0.1rem 0 0;
+  padding: 0 0.25rem;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+
+.card__why-label {
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.card__name {
+  margin: 0.15rem 0 0.6rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* --- Etiquetas ------------------------------------------------------------- */
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.28rem;
+  margin-top: auto;
+}
+
+.tag {
+  padding: 0.16rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+/* Tipo y generación llevan color de fondo, que llega por `style`. */
+.tag--type,
+.tag--generation {
+  color: #fff;
+}
+
+/* Género y forma alterna son secundarias: se distinguen sin competir. */
+.tag--genus,
+.tag--altForm {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.tag--button {
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tag--button:hover {
+  filter: brightness(1.12);
+}
+
+.tag--active {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px currentcolor;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* --- Botón "Cargar más" ---------------------------------------------------- */
+
+.load-more {
+  display: block;
+  margin: 1.75rem auto 0;
+  padding: 0.7rem 1.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.load-more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Avisos (cargando / error / sin resultados) ---------------------------- */
+
+.status {
+  max-width: 480px;
+  margin: 2.5rem auto 0;
+  padding: 1.5rem;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.status__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.status__message {
+  margin: 0.5rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.status__action {
+  margin-top: 1rem;
+  padding: 0.55rem 1.3rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Respeta a quien pide menos animación en su sistema. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* --- Encabezado e idioma --------------------------------------------------- */
+
+.app__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.lang-toggle__option {
+  padding: 0.25rem 0.7rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.lang-toggle__option--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* --- Filtros facetados ----------------------------------------------------- */
+
+.facets {
+  margin-top: 1.5rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.facets__group + .facets__group {
+  margin-top: 0.9rem;
+}
+
+.facets__title {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.facets__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.facets__clear {
+  margin-top: 0.9rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.facets__clear:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Chip de faceta: etiqueta más conteo. El conteo es lo que lo convierte en una
+   búsqueda facetada y no en un simple interruptor. */
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.24rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.chip--active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.chip:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.chip__count {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* --- Controles ------------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.4rem;
+}
+
+.controls .counter {
+  margin: 0;
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.segmented__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-right: 0.2rem;
+}
+
+.segmented__option {
+  padding: 0.26rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.segmented__option:hover {
+  border-color: var(--accent);
+}
+
+.segmented__option--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- Filas horizontales ---------------------------------------------------- */
+
+.rows {
+  margin-top: 1.25rem;
+}
+
+/* La declaración que hace baratas las 18 filas: el navegador se salta el
+   maquetado y el pintado de las que quedan fuera de la pantalla. Con esto y el
+   `loading="lazy"` de las imágenes no hace falta ningún virtualizador. */
+.row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+  margin-bottom: 1.6rem;
+}
+
+.row__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.row__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.row__count {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.row__arrows {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.row__arrow {
+  width: 1.9rem;
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.row__arrow:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.row__arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.row__track {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.25rem 1rem;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline-start: 0.25rem;
+  /* Evita que el gesto horizontal dispare el "atrás" del navegador. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.row__track > * {
+  flex: 0 0 clamp(130px, 40vw, 158px);
+  scroll-snap-align: start;
+}
+
+/* Tarjeta final de una fila: abre ese grupo completo en la cuadrícula. */
+.card--more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.card--more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.card--more__count {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.card--more__label {
+  font-size: 0.72rem;
+}
+
+/* --- Corrección de erratas ------------------------------------------------- */
+
+.suggestion {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.suggestion__query {
+  color: var(--text-soft);
+}
+
+.suggestion__button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- Panel del motor (solo en desarrollo) ---------------------------------- */
+
+.debug {
+  margin-top: 0.9rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.debug__summary {
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug__list {
+  margin: 0.6rem 0 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.debug__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.debug__row dt {
+  color: var(--text-soft);
+}
+
+.debug__row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* --- Reducción de la consulta ---------------------------------------------- */
+
+.reduction {
+  margin-top: 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.reduction__summary {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.reduction__terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reduction__term {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* La forma original de un plural, atenuada: lo que importa es a dónde se llevó. */
+.reduction__from {
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+/* El peso va en versalita y con cifras de ancho fijo para que la fila no baile. */
+.reduction__weight {
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.reduction__dropped {
+  margin: 0.55rem 0 0;
+  font-size: 0.76rem;
+  color: var(--text-soft);
+}
