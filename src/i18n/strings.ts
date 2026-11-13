@@ -157,6 +157,24 @@ export const STRINGS = {
     allResults: 'Resultados',
     language: 'Idioma',
 
+    /* Perfiles: quién está buscando. Ojo con «perfil» aquí: en el código la
+       palabra designa el vector de Rocchio (`ProfileIndex`), así que lo de la
+       pantalla es un `Viewer`. Ver la cabecera de `lib/viewers.ts`. */
+    gateTitle: '¿Quién está buscando?',
+    viewerSwitch: 'Cambiar de perfil',
+    viewerManage: 'Gestionar perfiles',
+    viewerDone: 'Listo',
+    viewerBack: 'Volver',
+    viewerNew: 'Nuevo perfil',
+    viewerNewTitle: 'Crear un perfil',
+    viewerName: 'Nombre',
+    viewerNamePlaceholder: 'Ana',
+    viewerAvatar: 'Retrato',
+    viewerCreate: 'Crear',
+    viewerCancel: 'Cancelar',
+    viewerRename: 'Renombrar',
+    viewerRemove: 'Borrar',
+
     levels: {
       [SCORE.ID_EXACT]: 'Número de Pokédex',
       [SCORE.NAME_EXACT]: 'Nombre exacto',
@@ -295,6 +313,24 @@ export const STRINGS = {
     altForm: 'Alternate form',
     allResults: 'Results',
     language: 'Language',
+
+    /* Profiles: who is searching. Careful with "profile" here: in the code the
+       word means the Rocchio vector (`ProfileIndex`), so the on-screen thing is
+       a `Viewer`. See the header of `lib/viewers.ts`. */
+    gateTitle: 'Who is searching?',
+    viewerSwitch: 'Switch profile',
+    viewerManage: 'Manage profiles',
+    viewerDone: 'Done',
+    viewerBack: 'Back',
+    viewerNew: 'New profile',
+    viewerNewTitle: 'Create a profile',
+    viewerName: 'Name',
+    viewerNamePlaceholder: 'Ana',
+    viewerAvatar: 'Portrait',
+    viewerCreate: 'Create',
+    viewerCancel: 'Cancel',
+    viewerRename: 'Rename',
+    viewerRemove: 'Delete',
 
     levels: {
       [SCORE.ID_EXACT]: 'Pokédex number',

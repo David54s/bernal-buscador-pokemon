@@ -52,6 +52,17 @@ import type { ProfileIndex } from '../src/lib/recommend.ts'
 import { readStoredRatings, storeRatings, toggleRating } from '../src/lib/ratings.ts'
 import { RATING } from '../src/constants.ts'
 import {
+  AVATAR_CHOICES,
+  addViewer,
+  avatarUrl,
+  readViewers,
+  removeViewer,
+  renameViewer,
+  storeViewers,
+} from '../src/lib/viewers.ts'
+import { viewerKey } from '../src/lib/storage.ts'
+import { DEFAULT_PREFS, readStoredPrefs, storePrefs } from '../src/lib/view-prefs.ts'
+import {
   allCorpusStats,
   DICTIONARY,
   explainTerm,
@@ -72,6 +83,38 @@ before(() => {
   corpus = JSON.parse(readFileSync(CORPUS_PATH, 'utf8')) as Corpus
   index = buildIndex(corpus)
 })
+
+/**
+ * Ejecuta algo con un `localStorage` de pega, y lo quita al terminar.
+ *
+ * En Node no existe `localStorage`, así que sin esto los módulos de persistencia
+ * no-opean en silencio —`globalThis.localStorage?.` es `undefined`— y una prueba
+ * de que algo «se recuerda» pasaría sin comprobar nada.
+ *
+ * Estaba copiado en tres pruebas; con los perfiles habrían sido una docena. El
+ * `finally` restaura lo que hubiera antes, porque las suites comparten proceso.
+ */
+function conAlmacenFalso(fn: (store: Map<string, string>) => void): void {
+  const store = new Map<string, string>()
+  const original = globalThis.localStorage
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    },
+    configurable: true,
+  })
+  try {
+    fn(store)
+  } finally {
+    if (original === undefined) {
+      Reflect.deleteProperty(globalThis, 'localStorage')
+    } else {
+      Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true })
+    }
+  }
+}
 
 /** Un generador reproducible: las pruebas no deben cambiar de resultado al repetirse. */
 function makeRandom(seed: number): () => number {
@@ -920,27 +963,12 @@ describe('multilenguaje', () => {
   })
 
   it('el idioma elegido se recuerda', () => {
-    const store = new Map<string, string>()
-    const original = globalThis.localStorage
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => void store.set(key, value),
-      },
-      configurable: true,
-    })
-    try {
+    conAlmacenFalso(() => {
       storeLang('en')
       assert.equal(readStoredLang(), 'en')
       storeLang('es')
       assert.equal(readStoredLang(), 'es')
-    } finally {
-      if (original === undefined) {
-        Reflect.deleteProperty(globalThis, 'localStorage')
-      } else {
-        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true })
-      }
-    }
+    })
   })
 })
 
@@ -1941,47 +1969,32 @@ describe('recomendaciones por realimentación de relevancia', () => {
   })
 
   it('las valoraciones se recuerdan entre visitas', () => {
-    const store = new Map<string, string>()
-    const original = globalThis.localStorage
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => void store.set(key, value),
-      },
-      configurable: true,
-    })
-    try {
+    conAlmacenFalso((store) => {
       const ratings = new Map<number, 1 | -1>([
         [25, RATING.LIKE],
         [19, RATING.DISLIKE],
       ])
-      storeRatings(ratings)
-      assert.deepEqual([...readStoredRatings()], [...ratings])
+      storeRatings('p1', ratings)
+      assert.deepEqual([...readStoredRatings('p1')], [...ratings])
 
       // Y el orden se conserva, que es lo que hace que «porque te gustó X»
       // nombre al ÚLTIMO valorado y no al de número más alto.
-      assert.deepEqual([...readStoredRatings().keys()], [25, 19])
+      assert.deepEqual([...readStoredRatings('p1').keys()], [25, 19])
 
       // Un valor corrupto no puede tirar la aplicación: se descarta lo que no se
       // reconoce y se conserva lo demás.
-      store.set('tarea1-buscador:ratings', '[[25,1],["x",1],[7,99],[4,-1],"basura"]')
+      store.set('tarea1-buscador:ratings:p1', '[[25,1],["x",1],[7,99],[4,-1],"basura"]')
       assert.deepEqual(
-        [...readStoredRatings()],
+        [...readStoredRatings('p1')],
         [
           [25, RATING.LIKE],
           [4, RATING.DISLIKE],
         ],
       )
 
-      store.set('tarea1-buscador:ratings', 'esto no es json')
-      assert.deepEqual([...readStoredRatings()], [])
-    } finally {
-      if (original === undefined) {
-        Reflect.deleteProperty(globalThis, 'localStorage')
-      } else {
-        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true })
-      }
-    }
+      store.set('tarea1-buscador:ratings:p1', 'esto no es json')
+      assert.deepEqual([...readStoredRatings('p1')], [])
+    })
   })
 
   it('volver a pulsar el mismo botón quita la valoración', () => {
@@ -2293,34 +2306,19 @@ describe('el recorrido no se pierde', () => {
   })
 
   it('el recorrido sobrevive a recargar, y un valor corrupto no rompe nada', () => {
-    const store = new Map<string, string>()
-    const original = globalThis.localStorage
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => void store.set(key, value),
-      },
-      configurable: true,
+    conAlmacenFalso((store) => {
+      storeTrail('p1', [4, 25, 26])
+      assert.deepEqual(readStoredTrail('p1'), [4, 25, 26], 'y en el mismo orden')
+
+      store.set('tarea1-buscador:trail:p1', '[4,"x",25,-1,25,0,26]')
+      assert.deepEqual(readStoredTrail('p1'), [4, 25, 26], 'se descarta lo que no se reconoce')
+
+      store.set('tarea1-buscador:trail:p1', 'esto no es json')
+      assert.deepEqual(readStoredTrail('p1'), [])
+
+      storeTrail('p1', [])
+      assert.deepEqual(readStoredTrail('p1'), [], 'borrar el recorrido lo deja vacío')
     })
-    try {
-      storeTrail([4, 25, 26])
-      assert.deepEqual(readStoredTrail(), [4, 25, 26], 'y en el mismo orden')
-
-      store.set('tarea1-buscador:trail', '[4,"x",25,-1,25,0,26]')
-      assert.deepEqual(readStoredTrail(), [4, 25, 26], 'se descarta lo que no se reconoce')
-
-      store.set('tarea1-buscador:trail', 'esto no es json')
-      assert.deepEqual(readStoredTrail(), [])
-
-      storeTrail([])
-      assert.deepEqual(readStoredTrail(), [], 'borrar el recorrido lo deja vacío')
-    } finally {
-      if (original === undefined) {
-        Reflect.deleteProperty(globalThis, 'localStorage')
-      } else {
-        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true })
-      }
-    }
   })
 })
 
@@ -2433,5 +2431,245 @@ describe('sugerencias al explorar', () => {
     assert.equal(new Set(r).size, r.length, 'sin repetidos')
     const especies = r.map((docId) => index.docs[docId]!.speciesIdx)
     assert.equal(new Set(especies).size, especies.length, 'una especie, una entrada')
+  })
+})
+
+/* ========================================================================== */
+
+/**
+ * Los perfiles. Lo que se prueba aquí es sobre todo una cosa: que los datos de
+ * una persona no se cuelen en los de otra, que es la única promesa que hace esta
+ * función y la única que se puede romper sin que se note a simple vista.
+ */
+describe('perfiles', () => {
+  let profile: ProfileIndex
+  before(() => {
+    profile = buildProfileIndex(index)
+  })
+
+  /** Las recomendaciones de un perfil, tal como las vería en pantalla. */
+  function recomendaciones(viewerId: string): number[] {
+    return recommend(index, profile, readStoredRatings(viewerId)).docIds
+  }
+
+  it('el primer arranque siembra tres perfiles con retrato', () => {
+    conAlmacenFalso(() => {
+      const { viewers, activeId } = readViewers()
+      assert.equal(viewers.length, 3, 'Ana, Luis y Sara')
+      assert.equal(activeId, viewers[0]!.id, 'y queda activo el primero')
+      assert.deepEqual(
+        viewers.map((v) => v.name),
+        ['Ana', 'Luis', 'Sara'],
+      )
+      for (const viewer of viewers) {
+        assert.ok(index.byPokeId.has(viewer.avatar), `el retrato de ${viewer.name} debe existir`)
+        assert.ok(avatarUrl(viewer.avatar).endsWith(`/${viewer.avatar}.png`))
+      }
+    })
+  })
+
+  it('los tres sembrados llegan con valoraciones puestas', () => {
+    conAlmacenFalso(() => {
+      const { viewers } = readViewers()
+      for (const viewer of viewers) {
+        const ratings = readStoredRatings(viewer.id)
+        assert.equal(ratings.size, 5, `${viewer.name} debe traer cuatro gustos y un rechazo`)
+        assert.equal(
+          [...ratings.values()].filter((r) => r === RATING.DISLIKE).length,
+          1,
+          'el «no me gusta» hace falta para que el término negativo de Rocchio tenga qué restar',
+        )
+        // Los números están escritos a mano en `viewers.ts`: una errata de dedo
+        // señalaría a otro Pokémon, o a ninguno, sin que nada se quejara.
+        for (const pokeId of ratings.keys()) {
+          assert.ok(index.byPokeId.has(pokeId), `el Pokédex ${pokeId} debe existir en el corpus`)
+        }
+      }
+    })
+  })
+
+  it('CADA PERFIL RECOMIENDA OTRA COSA: las tres listas son disjuntas', () => {
+    conAlmacenFalso(() => {
+      const { viewers } = readViewers()
+      const listas = viewers.map((v) => recomendaciones(v.id))
+
+      for (const lista of listas) {
+        assert.ok(lista.length > 10, 'cada perfil debe tener recomendaciones de verdad')
+      }
+
+      // Es la afirmación que sostiene la función, así que se fija aquí: con los
+      // gustos sembrados, las veinte recomendaciones de cada uno no comparten NI
+      // UN Pokémon con las de los otros dos.
+      for (let i = 0; i < listas.length; i++) {
+        for (let j = i + 1; j < listas.length; j++) {
+          const a = new Set(listas[i]!)
+          const comunes = listas[j]!.filter((docId) => a.has(docId))
+          assert.equal(
+            comunes.length,
+            0,
+            `${viewers[i]!.name} y ${viewers[j]!.name} no deberían compartir nada, y comparten ${comunes
+              .map((docId) => index.docs[docId]!.nameEs)
+              .join(', ')}`,
+          )
+        }
+      }
+    })
+  })
+
+  it('AISLAMIENTO: valorar en un perfil no toca el de al lado', () => {
+    conAlmacenFalso(() => {
+      const { viewers } = readViewers()
+      const [ana, luis] = viewers
+      const antesLuis = [...readStoredRatings(luis!.id)]
+      const antesRecLuis = recomendaciones(luis!.id)
+
+      storeRatings(ana!.id, toggleRating(readStoredRatings(ana!.id), 150, RATING.LIKE))
+      storeTrail(ana!.id, [4, 5, 6])
+      storePrefs(ana!.id, { types: [10], gens: [1], groupBy: GROUP_BY.NONE })
+
+      assert.deepEqual([...readStoredRatings(luis!.id)], antesLuis, 'las valoraciones de Luis')
+      assert.deepEqual(recomendaciones(luis!.id), antesRecLuis, 'y sus recomendaciones')
+      assert.deepEqual(readStoredTrail(luis!.id), [], 'el recorrido de Luis sigue vacío')
+      assert.deepEqual(readStoredPrefs(luis!.id), DEFAULT_PREFS, 'y sus filtros sin tocar')
+
+      // Y lo de Ana sí cambió, para que la prueba no pase por no haber escrito.
+      assert.equal(readStoredRatings(ana!.id).get(150), RATING.LIKE)
+      assert.deepEqual(readStoredTrail(ana!.id), [4, 5, 6])
+    })
+  })
+
+  it('dos perfiles con el MISMO NOMBRE no se pisan', () => {
+    conAlmacenFalso(() => {
+      let { viewers } = readViewers()
+      const a = addViewer(viewers, 'Ana', 1)
+      const b = addViewer(a.viewers, 'Ana', 1)
+      viewers = b.viewers
+
+      assert.notEqual(a.created.id, b.created.id, 'lo que separa dos perfiles es el id')
+      storeRatings(a.created.id, new Map([[25, RATING.LIKE]]))
+      storeRatings(b.created.id, new Map([[7, RATING.LIKE]]))
+      assert.deepEqual([...readStoredRatings(a.created.id).keys()], [25])
+      assert.deepEqual([...readStoredRatings(b.created.id).keys()], [7])
+    })
+  })
+
+  it('NO SE PUEDE quedar sin perfiles', () => {
+    // No es una comodidad: la lista no vacía es lo que distingue «ya se sembró»
+    // de «primer arranque». Si se pudiera vaciar, al recargar volverían los tres
+    // de ejemplo encima de los que el usuario hubiera creado.
+    const uno = [{ id: 'a', name: 'Ana', avatar: 1 }]
+    assert.deepEqual(removeViewer(uno, 'a'), uno, 'el último no se borra')
+
+    const dos = [...uno, { id: 'b', name: 'Luis', avatar: 7 }]
+    assert.deepEqual(
+      removeViewer(dos, 'a').map((v) => v.id),
+      ['b'],
+    )
+    assert.deepEqual(removeViewer(dos, 'inexistente'), dos, 'borrar lo que no hay no cambia nada')
+  })
+
+  it('borrar los de ejemplo no los resucita al recargar', () => {
+    conAlmacenFalso(() => {
+      const { viewers } = readViewers()
+      const soloUno = viewers.filter((v) => v.id === viewers[2]!.id)
+      storeViewers(soloUno)
+
+      const despues = readViewers()
+      assert.equal(despues.viewers.length, 1, 'se respeta lo que el usuario dejó')
+      assert.equal(despues.viewers[0]!.name, 'Sara')
+    })
+  })
+
+  it('MIGRA lo valorado antes de que hubiera perfiles, y no lo migra dos veces', () => {
+    conAlmacenFalso((store) => {
+      // Lo que habría guardado alguien que usara la página antes de esta función:
+      // las claves SIN sufijo de perfil.
+      store.set('tarea1-buscador:ratings', '[[25,1],[19,-1]]')
+      store.set('tarea1-buscador:trail', '[4,5,6]')
+
+      const { viewers, activeId } = readViewers()
+      assert.equal(viewers.length, 4, 'el migrado más los tres de ejemplo')
+      const mio = viewers[0]!
+      assert.equal(mio.name, 'Mis gustos')
+      assert.equal(activeId, mio.id, 'y queda activo, que es donde estaba el usuario')
+      assert.deepEqual(
+        [...readStoredRatings(mio.id)],
+        [
+          [25, RATING.LIKE],
+          [19, RATING.DISLIKE],
+        ],
+      )
+      assert.deepEqual(readStoredTrail(mio.id), [4, 5, 6])
+
+      // Las claves viejas se dejan quietas, para poder recuperarlas si hiciera
+      // falta; pero ya no se vuelven a migrar, porque la lista existe.
+      assert.equal(store.get('tarea1-buscador:ratings'), '[[25,1],[19,-1]]')
+      assert.equal(readViewers().viewers.length, 4, 'segunda lectura, mismos perfiles')
+    })
+  })
+
+  it('un perfil corrupto se descarta sin llevarse los demás', () => {
+    conAlmacenFalso((store) => {
+      store.set(
+        'tarea1-buscador:viewers',
+        JSON.stringify([
+          { id: 'a', name: 'Ana', avatar: 4 },
+          { id: 'b' },
+          { name: 'sin id', avatar: 7 },
+          { id: 'a', name: 'id repetido', avatar: 1 },
+          { id: 'c', name: 'Sara', avatar: -3 },
+          'basura',
+        ]),
+      )
+      const { viewers } = readViewers()
+      assert.deepEqual(
+        viewers.map((v) => v.id),
+        ['a', 'c'],
+      )
+      assert.equal(viewers[1]!.avatar, AVATAR_CHOICES[0], 'un retrato inválido cae en el primero')
+
+      store.set('tarea1-buscador:viewers', 'esto no es json')
+      assert.equal(readViewers().viewers.length, 3, 'ilegible: se siembra, no se rompe')
+    })
+  })
+
+  it('el nombre se limpia y se acota', () => {
+    const { created } = addViewer([], '   Ana   María  ', 4)
+    assert.equal(created.name, 'Ana María', 'sin espacios de sobra')
+
+    const { created: largo } = addViewer([], 'x'.repeat(50), 4)
+    assert.ok(largo.name.length <= 16, 'más no cabe bajo una tarjeta')
+
+    const { created: vacio } = addViewer([], '   ', 4)
+    assert.equal(vacio.name, 'Perfil 1', 'un nombre en blanco recibe uno por defecto')
+
+    assert.equal(renameViewer([created], created.id, '  ')[0]!.name, 'Ana María', 'no se vacía')
+  })
+
+  it('las claves de dos perfiles son distintas', () => {
+    assert.notEqual(viewerKey('tarea1-buscador:ratings', 'a'), viewerKey('tarea1-buscador:ratings', 'b'))
+    assert.equal(viewerKey('tarea1-buscador:ratings', 'a3f1'), 'tarea1-buscador:ratings:a3f1')
+  })
+
+  it('los filtros de cada perfil se recuerdan, y un valor inventado se descarta', () => {
+    conAlmacenFalso((store) => {
+      assert.deepEqual(readStoredPrefs('p1'), DEFAULT_PREFS, 'sin nada guardado, todo el catálogo')
+
+      storePrefs('p1', { types: [10, 3], gens: [1], groupBy: GROUP_BY.TYPE })
+      assert.deepEqual(readStoredPrefs('p1'), { types: [10, 3], gens: [1], groupBy: GROUP_BY.TYPE })
+      assert.deepEqual(readStoredPrefs('p2'), DEFAULT_PREFS, 'y no se ven desde otro perfil')
+
+      // Un `groupBy` inventado llegaría hasta `groupResults`, que decide con un
+      // `switch`, y dejaría la pantalla sin agrupar sin que nada lo explicara.
+      store.set('tarea1-buscador:prefs:p1', '{"types":[10,"x",-1,10],"gens":"no","groupBy":"zzz"}')
+      assert.deepEqual(readStoredPrefs('p1'), {
+        types: [10],
+        gens: [],
+        groupBy: DEFAULT_PREFS.groupBy,
+      })
+
+      store.set('tarea1-buscador:prefs:p1', 'esto no es json')
+      assert.deepEqual(readStoredPrefs('p1'), DEFAULT_PREFS)
+    })
   })
 })

@@ -214,8 +214,27 @@ export type GroupBy = (typeof GROUP_BY)[keyof typeof GROUP_BY]
 
 export const LANG_STORAGE_KEY = 'tarea1-buscador:lang'
 
+/* --- Perfiles ---------------------------------------------------------------- */
+
+/**
+ * La lista de perfiles y cuál está activo.
+ *
+ * Las claves de datos —valoraciones, recorrido, preferencias de vista— llevan el
+ * id del perfil como sufijo (`viewerKey` en `viewers.ts`). Éstas dos no: son las
+ * que dicen qué perfiles existen, así que viven fuera de cualquiera de ellos.
+ */
+export const VIEWERS_STORAGE_KEY = 'tarea1-buscador:viewers'
+export const ACTIVE_VIEWER_STORAGE_KEY = 'tarea1-buscador:viewer'
+
 /* --- Recomendaciones -------------------------------------------------------- */
 
+/**
+ * Base de la clave de las valoraciones. La de verdad lleva el perfil detrás
+ * —`tarea1-buscador:ratings:a3f1`—, porque cada perfil valora lo suyo.
+ *
+ * Los datos guardados antes de que hubiera perfiles están en esta clave a secas,
+ * sin sufijo, y `viewers.ts` los migra al primer arranque en vez de perderlos.
+ */
 export const RATINGS_STORAGE_KEY = 'tarea1-buscador:ratings'
 
 /** Las dos valoraciones. Objeto `as const`, no `enum`. */
@@ -244,6 +263,23 @@ export type Rating = (typeof RATING)[keyof typeof RATING]
  * quitarlas del todo amontona el resultado en una sola categoría, así que se
  * quedan con un cuarto del peso: ahí no mandan y suben la variedad del 70 % al
  * 81 %, mientras la precisión con cinco valoraciones sube del 86 % al 89 %.
+ *
+ * Una advertencia sobre esta métrica, descubierta al medirla de nuevo
+ * --------------------------------------------------------------------
+ * La tabla compara espacios de términos entre sí, y para eso sirve. Como cifra
+ * absoluta estaba **inflada**, porque contaba como acierto que a un Pokémon se le
+ * recomendara OTRA FORMA DE SÍ MISMO.
+ *
+ * Medido: a **224 de las 1025** especies se les recomendaba un disfraz propio
+ * —`Pikachu (Rock Star)` para quien votó Pikachu—, el 3,6 % de los huecos, y
+ * esos disfraces acertaban el tipo primario el **85 %** de las veces, muy por
+ * encima del acierto general. Eran puntos regalados por un defecto.
+ *
+ * `recommend` ya excluye la especie entera, así que el defecto no está. Cuesta
+ * **un punto** de esta métrica (68,9 % → 67,9 % en una medición propia con una
+ * sola valoración), y es un punto que medía el defecto, no la calidad. La
+ * comparación relativa de la tabla no se mueve: el descuento afecta igual a
+ * todos los espacios de términos.
  */
 export const RECOMMEND_WEIGHTS = {
   type: 1,
@@ -314,7 +350,19 @@ export const EXPLORE_DIVERSITY = 0.8
 
 /* --- Recorrido del grafo ---------------------------------------------------- */
 
+/** Base de la clave del recorrido; la de verdad lleva el perfil detrás. */
 export const TRAIL_STORAGE_KEY = 'tarea1-buscador:trail'
+
+/* --- Preferencias de vista --------------------------------------------------- */
+
+/**
+ * Base de la clave de los filtros y la agrupación, por perfil.
+ *
+ * Antes no se guardaban en absoluto: al recargar se volvía a la agrupación por
+ * generación y sin filtros. Si cada perfil tiene sus gustos, tiene sentido que
+ * tenga también su forma de mirar el catálogo.
+ */
+export const PREFS_STORAGE_KEY = 'tarea1-buscador:prefs'
 
 /**
  * Cuántos Pokémon guarda el recorrido antes de descartar los más antiguos.

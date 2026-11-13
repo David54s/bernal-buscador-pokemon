@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Rating } from './constants.ts'
 import {
   GROUP_BY,
@@ -22,6 +22,7 @@ import { PokemonRow } from './components/PokemonRow.tsx'
 import { RowList } from './components/RowList.tsx'
 import { SearchBar } from './components/SearchBar.tsx'
 import { StatusBanner } from './components/StatusBanner.tsx'
+import { ViewerMenu } from './components/ViewerMenu.tsx'
 import { useCorpusIndex } from './hooks/useCorpusIndex.ts'
 import { useLanguage } from './i18n/language-context.ts'
 import { t } from './i18n/strings.ts'
@@ -30,6 +31,8 @@ import type { Filters, Group } from './lib/index-types.ts'
 import { applyFacets, countFacets, parseQuery, runQuery } from './lib/query.ts'
 import { readStoredRatings, storeRatings, toggleRating } from './lib/ratings.ts'
 import { buildProfileIndex, recommend } from './lib/recommend.ts'
+import { readStoredPrefs, storePrefs } from './lib/view-prefs.ts'
+import { useViewer } from './viewers/viewer-context.ts'
 import { becauseYouLiked, docName } from './i18n/strings.ts'
 
 /**
@@ -40,6 +43,14 @@ import { becauseYouLiked, docName } from './i18n/strings.ts'
  */
 const NO_TYPES: ReadonlySet<number> = new Set()
 const NO_GENS: ReadonlySet<number> = new Set()
+
+/**
+ * Los ids guardados, como conjunto; y el conjunto vacío compartido cuando no hay
+ * ninguno, para no romper la cadena de `useMemo` con una identidad nueva.
+ */
+function toSet(ids: readonly number[], empty: ReadonlySet<number>): ReadonlySet<number> {
+  return ids.length === 0 ? empty : new Set(ids)
+}
 
 function toggle(set: ReadonlySet<number>, value: number): ReadonlySet<number> {
   const next = new Set(set)
@@ -52,10 +63,24 @@ export default function App() {
   const { index, state, error, retry } = useCorpusIndex()
   const { lang, setLang } = useLanguage()
 
+  /**
+   * El perfil activo. Todo lo que se guarda abajo lleva su id.
+   *
+   * No hace falta reaccionar a que cambie: `ViewerShell` monta este componente
+   * con `key={active.id}`, así que cambiar de perfil lo remonta y cada
+   * inicializador de abajo vuelve a leer, del cajón del perfil nuevo.
+   */
+  const { active } = useViewer()
+
+  /** Los filtros y la agrupación con los que este perfil dejó la pantalla. */
+  const stored = useMemo(() => readStoredPrefs(active.id), [active.id])
+
   const [query, setQuery] = useState('')
-  const [selTypes, setSelTypes] = useState<ReadonlySet<number>>(NO_TYPES)
-  const [selGens, setSelGens] = useState<ReadonlySet<number>>(NO_GENS)
-  const [groupBy, setGroupBy] = useState<GroupBy>(GROUP_BY.GENERATION)
+  const [selTypes, setSelTypes] = useState<ReadonlySet<number>>(() =>
+    toSet(stored.types, NO_TYPES),
+  )
+  const [selGens, setSelGens] = useState<ReadonlySet<number>>(() => toSet(stored.gens, NO_GENS))
+  const [groupBy, setGroupBy] = useState<GroupBy>(stored.groupBy)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [visibleRows, setVisibleRows] = useState(MAX_ROWS_INITIAL)
   /**
@@ -64,8 +89,24 @@ export default function App() {
    * desmonta la otra, así que al volver siguen la consulta y los filtros.
    */
   const [view, setView] = useState<View>(VIEW.SEARCH)
-  /** Lo valorado, inicializado con lo que se guardó en visitas anteriores. */
-  const [ratings, setRatings] = useState(() => readStoredRatings())
+  /** Lo que ESTE perfil valoró en visitas anteriores. */
+  const [ratings, setRatings] = useState(() => readStoredRatings(active.id))
+
+  /**
+   * Los filtros se guardan en un efecto y no en los manejadores.
+   *
+   * Son cinco los que tocan estos tres estados —`handleToggleType`,
+   * `handleToggleGen`, `handleClearFilters`, `handleGroupBy` y `handleSeeRest`—,
+   * así que persistir en cada uno serían cinco sitios de los que olvidar uno, y
+   * el olvido no daría error: simplemente no se guardaría a veces. Aquí es un
+   * sitio y no se puede esquivar.
+   *
+   * La primera pasada reescribe lo mismo que acabó de leerse. Es un no-op de
+   * microsegundos y evita tener que distinguir el montaje del resto.
+   */
+  useEffect(() => {
+    storePrefs(active.id, { types: [...selTypes], gens: [...selGens], groupBy })
+  }, [active.id, selTypes, selGens, groupBy])
 
   const filters = useMemo<Filters>(() => ({ types: selTypes, gens: selGens }), [selTypes, selGens])
 
@@ -171,13 +212,16 @@ export default function App() {
   }, [resetPaging])
 
   /** "Ver el resto" de una fila: fija esa faceta y pasa a la cuadrícula plana. */
-  const handleRate = useCallback((pokeId: number, rating: Rating) => {
-    setRatings((current) => {
-      const next = toggleRating(current, pokeId, rating)
-      storeRatings(next)
-      return next
-    })
-  }, [])
+  const handleRate = useCallback(
+    (pokeId: number, rating: Rating) => {
+      setRatings((current) => {
+        const next = toggleRating(current, pokeId, rating)
+        storeRatings(active.id, next)
+        return next
+      })
+    },
+    [active.id],
+  )
 
   const handleSeeRest = useCallback(
     (group: Group) => {
@@ -195,7 +239,10 @@ export default function App() {
     <header className="app__header">
       <div className="app__heading">
         <h1 className="app__title">{t(lang, 'title')}</h1>
-        <LanguageToggle lang={lang} onChange={setLang} />
+        <div className="app__chrome">
+          <ViewerMenu lang={lang} />
+          <LanguageToggle lang={lang} onChange={setLang} />
+        </div>
       </div>
       <p className="app__subtitle">
         {t(lang, 'subtitle')} ·{' '}

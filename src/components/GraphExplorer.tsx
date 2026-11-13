@@ -8,6 +8,7 @@ import type { GraphNode } from '../lib/graph.ts'
 import type { PokedexIndex } from '../lib/index-types.ts'
 import { buildProfileIndex, exploreSuggestions } from '../lib/recommend.ts'
 import { readStoredTrail, storeTrail, visit } from '../lib/trail.ts'
+import { useViewer } from '../viewers/viewer-context.ts'
 import { PokemonRow } from './PokemonRow.tsx'
 
 interface GraphExplorerProps {
@@ -86,6 +87,9 @@ export function GraphExplorer({
     return { kind: NODE.POKEMON, docId: doc?.docId ?? 0 }
   }, [index])
 
+  /** De quién es el recorrido. Cada perfil pasea por su cuenta. */
+  const { active } = useViewer()
+
   const [actual, setActual] = useState<GraphNode>(inicio)
   const inicioDocId = inicio.kind === NODE.POKEMON ? inicio.docId : -1
 
@@ -96,8 +100,11 @@ export function GraphExplorer({
    * Es una lista aparte del nodo en el que se está, y no el camino hasta él:
    * un camino no puede repetir nodos, así que al volver sobre uno se recortaba
    * y borraba media exploración. Ver `trail.ts`.
+   *
+   * Se lee del cajón del perfil activo. No hace falta reaccionar a que cambie:
+   * cambiar de perfil remonta `App` entero, y con él esto.
    */
-  const [trail, setTrail] = useState<readonly number[]>(() => readStoredTrail())
+  const [trail, setTrail] = useState<readonly number[]>(() => readStoredTrail(active.id))
 
   /**
    * Los parecidos salen del recomendador que ya existe, preguntándole como si
@@ -121,11 +128,11 @@ export function GraphExplorer({
       if (doc === undefined) return
       setTrail((t) => {
         const next = visit(t, doc.pokeId)
-        storeTrail(next)
+        storeTrail(active.id, next)
         return next
       })
     },
-    [index],
+    [index, active.id],
   )
 
   /**
@@ -138,8 +145,8 @@ export function GraphExplorer({
    */
   const limpiar = useCallback(() => {
     setTrail([])
-    storeTrail([])
-  }, [])
+    storeTrail(active.id, [])
+  }, [active.id])
 
   /** Los documentos del recorrido, resueltos para pintarlos. */
   const visitados = useMemo(

@@ -2,7 +2,7 @@
  * LAS VALORACIONES, GUARDADAS
  * ===========================
  *
- * Qué Pokémon gustaron y cuáles no, entre visitas.
+ * Qué Pokémon gustaron y cuáles no, entre visitas, **de cada perfil**.
  *
  * En su propio módulo y sin React, por lo mismo que `lang-storage.ts`: son
  * funciones puras que no necesitan nada del árbol de componentes, y así las
@@ -14,10 +14,19 @@
  * cambiaría al regenerar el índice —si PokeAPI añade un Pokémon, todo lo que
  * venga después se desplaza— y las valoraciones guardadas pasarían a señalar a
  * otros Pokémon sin que nadie se entere. El número de Pokédex no se mueve.
+ *
+ * Y una clave por perfil
+ * ----------------------
+ * El id del perfil es el PRIMER argumento y no tiene valor por defecto, a
+ * propósito. Con un valor por defecto, olvidarlo en un punto de llamada
+ * compilaría y escribiría las valoraciones de una persona en el cajón de otra,
+ * que es exactamente el fallo que los perfiles vienen a evitar. Sin él, el
+ * compilador obliga a decir de quién son los datos.
  */
 
 import { RATING, RATINGS_STORAGE_KEY } from '../constants.ts'
 import type { Rating } from '../constants.ts'
+import { readJson, viewerKey, writeJson } from './storage.ts'
 
 /** Número de Pokédex -> valoración. */
 export type Ratings = ReadonlyMap<number, Rating>
@@ -44,34 +53,36 @@ function parseRating(value: unknown): Rating | null {
  * pestaña, o editado a mano. Lo que no se reconoce se descarta en silencio, y
  * una entrada mala no tira las demás.
  */
-export function readStoredRatings(): Map<number, Rating> {
+export function readStoredRatings(viewerId: string): Map<number, Rating> {
+  return parseRatings(readJson(viewerKey(RATINGS_STORAGE_KEY, viewerId)))
+}
+
+/**
+ * Las valoraciones guardadas en la clave SIN sufijo de perfil.
+ *
+ * Es de donde salen los datos de quien usara la página antes de que hubiera
+ * perfiles. Lo usa `viewers.ts` al migrar, y nada más.
+ */
+export function readLegacyRatings(): Map<number, Rating> {
+  return parseRatings(readJson(RATINGS_STORAGE_KEY))
+}
+
+function parseRatings(parsed: unknown): Map<number, Rating> {
   const out = new Map<number, Rating>()
-  try {
-    const raw = globalThis.localStorage?.getItem(RATINGS_STORAGE_KEY)
-    if (raw == null) return out
+  if (!Array.isArray(parsed)) return out
 
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return out
-
-    for (const entry of parsed) {
-      if (!Array.isArray(entry) || entry.length !== 2) continue
-      const pokeId = entry[0]
-      if (typeof pokeId !== 'number' || !Number.isInteger(pokeId) || pokeId <= 0) continue
-      const rating = parseRating(entry[1])
-      if (rating !== null) out.set(pokeId, rating)
-    }
-  } catch {
-    // Sin acceso al almacenamiento, o JSON ilegible: se empieza sin nada.
+  for (const entry of parsed) {
+    if (!Array.isArray(entry) || entry.length !== 2) continue
+    const pokeId = entry[0]
+    if (typeof pokeId !== 'number' || !Number.isInteger(pokeId) || pokeId <= 0) continue
+    const rating = parseRating(entry[1])
+    if (rating !== null) out.set(pokeId, rating)
   }
   return out
 }
 
-export function storeRatings(ratings: Ratings): void {
-  try {
-    globalThis.localStorage?.setItem(RATINGS_STORAGE_KEY, JSON.stringify([...ratings]))
-  } catch {
-    // Si no se puede guardar, las valoraciones valen para esta sesión y ya está.
-  }
+export function storeRatings(viewerId: string, ratings: Ratings): void {
+  writeJson(viewerKey(RATINGS_STORAGE_KEY, viewerId), [...ratings])
 }
 
 /**

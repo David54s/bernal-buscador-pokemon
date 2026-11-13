@@ -7,22 +7,23 @@
  */
 
 import { LANG_STORAGE_KEY } from '../constants.ts'
+import { readKey, writeKey } from '../lib/storage.ts'
 import type { Lang } from './strings.ts'
 
 /**
  * El idioma inicial: lo que el usuario eligió la última vez y, si no hay nada
  * guardado, lo que pida el navegador.
  *
- * Cada acceso va envuelto porque `localStorage` puede lanzar —ventana privada,
- * datos de sitio bloqueados— y eso no debe impedir que la página arranque.
+ * El acceso al almacenamiento va por `storage.ts`, que es quien envuelve el
+ * `localStorage` que puede lanzar —ventana privada, datos de sitio bloqueados—.
+ *
+ * El idioma es lo ÚNICO que no se guarda por perfil: es cómo se lee la página,
+ * no quién la usa. Dos personas compartiendo un portátil comparten el idioma.
  */
 export function readStoredLang(fallback: Lang = 'es'): Lang {
-  try {
-    const stored = globalThis.localStorage?.getItem(LANG_STORAGE_KEY)
-    if (stored === 'es' || stored === 'en') return stored
-  } catch {
-    // Sin acceso a almacenamiento: se decide por el navegador.
-  }
+  const stored = readKey(LANG_STORAGE_KEY)
+  if (stored === 'es' || stored === 'en') return stored
+
   try {
     const preferred = (globalThis.navigator?.language ?? '').toLowerCase()
     if (preferred.startsWith('en')) return 'en'
@@ -34,9 +35,5 @@ export function readStoredLang(fallback: Lang = 'es'): Lang {
 }
 
 export function storeLang(lang: Lang): void {
-  try {
-    globalThis.localStorage?.setItem(LANG_STORAGE_KEY, lang)
-  } catch {
-    // Si no se puede guardar, la elección vale para esta sesión y ya está.
-  }
+  writeKey(LANG_STORAGE_KEY, lang)
 }

@@ -1322,3 +1322,391 @@ a {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* --- Perfiles --------------------------------------------------------------- */
+
+/* El grupo de la derecha del encabezado: perfil e idioma, juntos y en ese orden
+   —quién usa la página antes de en qué idioma la lee—. */
+.app__chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* El perfil activo, pulsable, en el encabezado. */
+.viewer-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.viewer-menu__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.viewer-menu__button:hover {
+  border-color: var(--accent);
+}
+
+.viewer-menu__button:focus-visible,
+.viewer-menu__option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* El retrato: el sprite clásico, que viene con fondo transparente y a 96 px, así
+   que a 1.6rem se ve nítido sin escalarlo hacia arriba. */
+.viewer-menu__avatar {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: var(--skeleton);
+  object-fit: contain;
+}
+
+.viewer-menu__caret {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+}
+
+.viewer-menu__list {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 20;
+  min-width: 11rem;
+  margin: 0;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  list-style: none;
+}
+
+.viewer-menu__option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.viewer-menu__option:hover {
+  background: var(--accent-soft);
+}
+
+.viewer-menu__option--current {
+  font-weight: 700;
+}
+
+.viewer-menu__check {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* «Gestionar perfiles» va separado de la lista: es una acción, no un destino. */
+.viewer-menu__option--manage {
+  margin-top: 0.3rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.viewer-menu__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* La portada: «¿Quién está buscando?».
+
+   Tapa la página entera, pero lo que de verdad la hace modal es el `inert` que
+   `ViewerShell` pone en lo de detrás; esto es solo que no se vea. */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.gate__panel {
+  width: 100%;
+  max-width: 44rem;
+  text-align: center;
+}
+
+.gate__title {
+  margin: 0 0 1.8rem;
+  font-size: clamp(1.3rem, 4vw, 2rem);
+  font-weight: 700;
+}
+
+.gate__list {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gate__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gate__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  width: 7.5rem;
+  padding: 0.6rem;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, transform 0.12s;
+}
+
+.gate__card:hover,
+.gate__card:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+/* En cuál se está. Se marca con el borde y no con el fondo, que ya lo usa el
+   estado de foco. */
+.gate__card--current {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.gate__avatar {
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  object-fit: contain;
+}
+
+.gate__name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.gate__hint {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+/* La tarjeta de crear: el mismo hueco que un retrato, con un signo en medio. */
+.gate__card--new .gate__plus {
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  border: 2px dashed var(--border);
+  border-radius: 14px;
+  font-size: 2.2rem;
+  line-height: 1;
+  color: var(--text-soft);
+}
+
+.gate__remove {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.gate__remove:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gate__rename {
+  width: 7.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.gate__actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 2rem;
+}
+
+.gate__button {
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.gate__button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gate__button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.gate__button:focus-visible,
+.gate__remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* El formulario de crear un perfil. */
+.gate__form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.gate__field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.gate__field-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.gate__input {
+  width: 14rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+}
+
+.gate__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* La rejilla de retratos. Nueve, fija: dejar elegir entre los 1025 sería un
+   buscador dentro del buscador. Ver `AVATAR_CHOICES`. */
+.gate__avatars {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: 24rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gate__avatar-option {
+  display: grid;
+  place-items: center;
+  padding: 0.2rem;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.gate__avatar-option--on {
+  border-color: var(--accent);
+}
+
+.gate__avatar-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gate__avatar-img {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewer-menu__button,
+  .gate__card,
+  .gate__avatar-option {
+    transition: none;
+  }
+
+  .gate__card:hover,
+  .gate__card:focus-visible {
+    transform: none;
+  }
+}

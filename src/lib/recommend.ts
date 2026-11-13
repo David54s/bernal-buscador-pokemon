@@ -186,8 +186,12 @@ export interface Recommendation {
  *
  * Dos reglas heredadas de allí, por los mismos motivos:
  *
- *   - **Lo ya valorado no se recomienda.** Recomendar lo que acabas de marcar
- *     sería no recomendar nada.
+ *   - **Lo ya valorado no se recomienda**, y se descarta la ESPECIE entera y no
+ *     solo el documento valorado. Excluyendo únicamente el documento, dar «me
+ *     gusta» a Pikachu devolvía «Pikachu (Rock Star)» en primer lugar: el mismo
+ *     Pokémon con otra ropa. Pasaba en los tres perfiles de ejemplo a la vez
+ *     —`Lapras (Gmax)`, `Growlithe (Hisui)`—, y es el mismo criterio que ya
+ *     aplicaba `exploreSuggestions` al explorar el grafo.
  *   - **Una especie, una fila.** Charizard y sus tres formas Mega comparten
  *     tipo, categoría, generación y color, así que sin colapsar ocuparían los
  *     cuatro primeros puestos siendo el mismo Pokémon.
@@ -235,6 +239,32 @@ export interface RecommendResult {
 }
 
 /**
+ * Todos los documentos de las especies que se han valorado.
+ *
+ * Es lo que se excluye al recomendar: no los documentos valorados, sino sus
+ * especies completas. Charizard tiene tres formas Mega, y las cuatro comparten
+ * tipo, categoría, generación y color, así que valorar una deja a las otras tres
+ * en lo más alto del parecido siendo el mismo Pokémon.
+ */
+function ratedSpecies(
+  index: PokedexIndex,
+  liked: readonly number[],
+  disliked: readonly number[],
+): Set<number> {
+  const species = new Set<number>()
+  for (const docId of [...liked, ...disliked]) {
+    const doc = index.docs[docId]
+    if (doc !== undefined) species.add(doc.speciesIdx)
+  }
+
+  const out = new Set<number>()
+  for (const doc of index.docs) {
+    if (species.has(doc.speciesIdx)) out.add(doc.docId)
+  }
+  return out
+}
+
+/**
  * Las recomendaciones a partir de lo valorado.
  *
  * Las valoraciones llegan por número de Pokédex —ver `ratings.ts`— y se
@@ -257,8 +287,9 @@ export function recommend(
   }
 
   const terms = buildProfile(profile, liked, disliked)
-  const exclude = new Set([...liked, ...disliked])
-  const docIds = recommendFrom(index, profile, terms, exclude, limit).map((r) => r.docId)
+  const docIds = recommendFrom(index, profile, terms, ratedSpecies(index, liked, disliked), limit).map(
+    (r) => r.docId,
+  )
 
   return {
     docIds,
