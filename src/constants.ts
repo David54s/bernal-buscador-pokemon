@@ -129,6 +129,75 @@ export const REDUCE_IDENTITY_BOOST = 1.5
  */
 export const REDUCE_MAX_DOCS = 40
 
+/* --- Vistas ----------------------------------------------------------------- */
+
+/** Las dos pantallas de la aplicación. Objeto `as const`, no `enum`. */
+export const VIEW = {
+  SEARCH: 'search',
+  STATS: 'stats',
+  GRAPH: 'graph',
+} as const
+
+export type View = (typeof VIEW)[keyof typeof VIEW]
+
+/* --- Estadísticas del corpus ----------------------------------------------- */
+
+/**
+ * Qué parte del corpus se analiza. Objeto `as const` en vez de `enum`: el
+ * proyecto compila con `erasableSyntaxOnly`.
+ *
+ * La separación no es cosmética, es el experimento. Las dos leyes se enuncian
+ * sobre lenguaje natural, y el corpus contiene además un vocabulario controlado
+ * —nombres propios y categorías— que no lo es. Medirlos por separado permite
+ * comprobar la diferencia en vez de darla por supuesta.
+ */
+export const SCOPE = {
+  /** Las entradas de Pokédex: texto corrido escrito por una persona. */
+  DESCRIPTION: 'descripcion',
+  /** Nombres, categorías y tipos: vocabulario controlado. */
+  IDENTITY: 'identidad',
+  /** Los dos juntos. */
+  ALL: 'todo',
+} as const
+
+export type Scope = (typeof SCOPE)[keyof typeof SCOPE]
+
+/**
+ * Qué fracción inicial de la curva de Heaps se descarta al ajustar.
+ *
+ * El arranque es mucho más empinado que el resto —con el corpus vacío, casi toda
+ * palabra es nueva— y arrastra la regresión hacia arriba. La ley describe el
+ * régimen asintótico, no el transitorio.
+ *
+ * El valor está medido. Ajustando con el 80 % del corpus y prediciendo el
+ * vocabulario total:
+ *
+ *   ventana    β       predice   real     error
+ *     0 %    0,685     13 670   12 322   +10,9 %
+ *    10 %    0,523     13 122   12 322    +6,5 %
+ *    20 %    0,492     12 822   12 322    +4,1 %
+ *
+ * A partir del 20 % la mejora se aplana, así que subirlo más solo tiraría datos.
+ */
+export const HEAPS_WARMUP = 0.2
+
+/** Cuántos puntos se muestrean de la curva de Heaps para dibujarla y ajustarla. */
+export const HEAPS_POINTS = 60
+
+/**
+ * Semilla del barajado de especies al construir la curva de Heaps.
+ *
+ * Hay que barajar: el corpus viene en orden de Pokédex, que agrupa a los Pokémon
+ * por generación y por familia evolutiva, así que recorrerlo tal cual mediría el
+ * orden de publicación de los juegos y no la ley. Y hay que fijar la semilla para
+ * que dos ejecuciones den el mismo número, que es lo que permite afirmarlo en una
+ * prueba.
+ */
+export const HEAPS_SEED = 7
+
+/** Cuántos términos de la cabeza de la distribución se auditan contra la lista de vacías. */
+export const ZIPF_AUDIT_HEAD = 50
+
 /* --- Agrupación ------------------------------------------------------------ */
 
 /** Objeto `as const` en vez de `enum`: el proyecto compila con `erasableSyntaxOnly`. */
@@ -144,6 +213,116 @@ export type GroupBy = (typeof GROUP_BY)[keyof typeof GROUP_BY]
 /* --- Idioma ---------------------------------------------------------------- */
 
 export const LANG_STORAGE_KEY = 'tarea1-buscador:lang'
+
+/* --- Recomendaciones -------------------------------------------------------- */
+
+export const RATINGS_STORAGE_KEY = 'tarea1-buscador:ratings'
+
+/** Las dos valoraciones. Objeto `as const`, no `enum`. */
+export const RATING = {
+  LIKE: 1,
+  DISLIKE: -1,
+} as const
+
+export type Rating = (typeof RATING)[keyof typeof RATING]
+
+/**
+ * Cuánto pesa cada faceta al describir un gusto.
+ *
+ * Los valores están medidos, no elegidos. La métrica es qué fracción de las seis
+ * recomendaciones comparte el tipo primario del Pokémon que gustó, evaluada
+ * sobre las 1025 especies (el azar da 5,6 %):
+ *
+ *   espacio de términos                      tipo    categoría
+ *   tipo + generación + color + categoría    62,7 %    19,2 %
+ *   sin color                                64,0 %    19,8 %
+ *   sin generación                           66,9 %    19,5 %
+ *   solo tipo + categoría                    71,7 %    19,7 %
+ *
+ * La generación es un accidente de cuándo salió el juego, no un parecido, y
+ * arrastra la recomendación hacia Pokémon que solo comparten época. Pero
+ * quitarlas del todo amontona el resultado en una sola categoría, así que se
+ * quedan con un cuarto del peso: ahí no mandan y suben la variedad del 70 % al
+ * 81 %, mientras la precisión con cinco valoraciones sube del 86 % al 89 %.
+ */
+export const RECOMMEND_WEIGHTS = {
+  type: 1,
+  genus: 1,
+  generation: 0.25,
+  color: 0.25,
+} as const
+
+/**
+ * Cuánto resta lo rechazado frente a lo que gustó, la β de Rocchio.
+ *
+ * Por debajo de 1 a propósito: la literatura es consistente en que la
+ * realimentación negativa es menos fiable que la positiva —saber qué NO quieres
+ * acota mucho menos que saber qué sí—, así que pesa la mitad.
+ */
+export const ROCCHIO_BETA = 0.5
+
+/** Cuántas recomendaciones se calculan. La fila enseña las que quepan. */
+export const RECOMMEND_MAX = 20
+
+/**
+ * Cuánto pesa la FORMA —base, Mega, Gigamax, regional— al describir un gusto.
+ *
+ * Sin este término, una forma Mega y su base tienen un perfil casi idéntico
+ * —`t10 t3 KFlame g1 c8` frente a `t10 t16 KFlame g1 c8`— y nada puede sesgar la
+ * exploración hacia las Megas aunque se visiten una tras otra.
+ *
+ * Medido: tras pasar por tres formas Mega, de ocho sugerencias eran Mega
+ * **cero** sin este término y **cinco** con él.
+ */
+export const RECOMMEND_WEIGHT_FORM = 1
+
+/**
+ * Cuánto pesa el recorrido ya andado frente al Pokémon en el que se está.
+ *
+ * Medio: el nodo actual manda, pero lo visitado inclina las sugerencias. Es lo
+ * que hace que explorar Megas lleve a más Megas.
+ */
+export const EXPLORE_TRAIL_WEIGHT = 0.5
+
+/**
+ * Cuánto pesa la relevancia frente a la variedad al elegir las sugerencias.
+ *
+ * Con 1 se ordena solo por parecido y la lista se amontona: para Charizard
+ * —Fuego y Volador— salían ocho Pokémon de solo **3 tipos distintos**. Bajarlo
+ * reparte, pero demasiado lo descarrila.
+ *
+ *   λ     tipos distintos   primeros resultados
+ *   1,0         3           Moltres, Charmeleon, Flareon, Infernape
+ *   0,8         5           Moltres, Charmeleon, Infernape, Flareon, Oricorio
+ *   0,6         7           Moltres, Infernape, Oricorio, Clefable (Mega), … Krabby
+ *   0,5         8           Moltres, Infernape, Tornadus, Groudon, … Vivillon
+ *
+ * En 0,8 se gana variedad sin perder a los que de verdad se parecen; por debajo
+ * empiezan a colarse Pokémon que no vienen a cuento.
+ */
+export const EXPLORE_DIVERSITY = 0.8
+
+/**
+ * Las descripciones NO entran en el perfil, y conviene dejar escrito por qué,
+ * porque la tentación de añadirlas es grande: son 12 322 términos frente a 752.
+ *
+ * Medido: incluirlas al mismo peso hunde la precisión de tipo del 61 % al 44 %.
+ * Es el reverso del hallazgo de las leyes del corpus —el texto corrido cumple
+ * Zipf y el vocabulario controlado no—: para describir el lenguaje manda el
+ * texto, y para recomendar mandan los metadatos.
+ */
+
+/* --- Recorrido del grafo ---------------------------------------------------- */
+
+export const TRAIL_STORAGE_KEY = 'tarea1-buscador:trail'
+
+/**
+ * Cuántos Pokémon guarda el recorrido antes de descartar los más antiguos.
+ *
+ * Cuarenta caben de sobra en una tira que se desplaza y cubren una exploración
+ * larga: en un paseo medido de 25 saltos se visitaron 18 Pokémon distintos.
+ */
+export const TRAIL_MAX = 40
 
 /* --- Colores --------------------------------------------------------------- */
 

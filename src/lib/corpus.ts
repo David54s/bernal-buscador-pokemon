@@ -26,6 +26,20 @@ export interface CorpusType {
   es: string
   /** Nombre en es-419 cuando difiere de `es`: lucha→Pelea, bicho→Insecto. */
   alt?: string
+  /**
+   * Las relaciones de daño, como ids de tipo: el grafo dirigido de ventajas.
+   *
+   * Ausentes en corpus anteriores a la versión que las añadió, por eso son
+   * opcionales: la aplicación tiene que seguir funcionando con un archivo viejo
+   * en vez de romperse al cargar.
+   *
+   *   `str`  le gana a         (doble daño a)
+   *   `wk`   pierde contra     (doble daño de)
+   *   `nil`  no afecta a       (ningún daño a)
+   */
+  str?: number[]
+  wk?: number[]
+  nil?: number[]
 }
 
 /**
@@ -76,6 +90,15 @@ export interface CorpusSpecies {
   gen: number
   /** Índice del color en `colors`, 1..10. */
   c: number
+  /**
+   * Id de la especie de la que ésta evoluciona. Ausente si no evoluciona de
+   * ninguna, que son 540 de las 1025.
+   *
+   * Solo se guarda la arista HACIA ATRÁS. La de ida se deriva invirtiéndola al
+   * construir el índice: guardar las dos sería guardar lo mismo dos veces y
+   * abrir la puerta a que se contradigan.
+   */
+  evo?: number
   /**
    * Entrada de Pokédex en inglés. Es la descripción de la especie, no su
    * identidad: "It has a preference for hot things." Alimenta el índice de

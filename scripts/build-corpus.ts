@@ -145,6 +145,17 @@ interface TypeResponse {
   name: string
   names: LocalizedName[]
   pokemon: { slot: number; pokemon: NamedRef }[]
+  /**
+   * El grafo de ventajas entre tipos.
+   *
+   * Llevaba llegando desde siempre en estas mismas 18 respuestas y se tiraba
+   * por no estar declarado aquí. Rescatarlo no cuesta ni una petición.
+   */
+  damage_relations: {
+    double_damage_to: NamedRef[]
+    double_damage_from: NamedRef[]
+    no_damage_to: NamedRef[]
+  }
 }
 interface GenerationResponse {
   id: number
@@ -204,6 +215,11 @@ interface SpeciesText {
   colors: CorpusColor[]
   /** Color de cada especie. PokeAPI lo tiene para las 1025. */
   colorOf: Map<number, number>
+  /**
+   * De qué especie evoluciona cada una. Solo las 485 que evolucionan de alguna;
+   * las 540 restantes son raíces de su línea y no aparecen aquí.
+   */
+  evolvesFrom: Map<number, number>
 }
 
 /**
@@ -265,6 +281,13 @@ async function fetchSpeciesText(): Promise<SpeciesText> {
       id
       pokemon_color_id
     }
+    evolution: pokemon_v2_pokemonspecies(
+      where: { evolves_from_species_id: { _is_null: false } }
+      order_by: { id: asc }
+    ) {
+      id
+      evolves_from_species_id
+    }
   }`
 
   const response = await fetch(GRAPHQL_URL, {
@@ -283,6 +306,7 @@ async function fetchSpeciesText(): Promise<SpeciesText> {
       enFlavor: FlavorRow[]
       colors: ColorRow[]
       speciesColor: SpeciesColorRow[]
+      evolution: EvolutionRow[]
     }
   }
   if (payload.errors?.length) throw new Error(`GraphQL: ${payload.errors[0]!.message}`)
@@ -297,6 +321,7 @@ async function fetchSpeciesText(): Promise<SpeciesText> {
     enFlavor: new Map(),
     colors: [],
     colorOf: new Map(),
+    evolvesFrom: new Map(),
   }
   for (const row of payload.data.es) {
     if (row.name) out.esName.set(row.pokemon_species_id, row.name)
@@ -337,6 +362,9 @@ async function fetchSpeciesText(): Promise<SpeciesText> {
   for (const row of payload.data.speciesColor) {
     if (row.pokemon_color_id !== null) out.colorOf.set(row.id, row.pokemon_color_id)
   }
+  for (const row of payload.data.evolution) {
+    out.evolvesFrom.set(row.id, row.evolves_from_species_id)
+  }
   return out
 }
 
@@ -348,6 +376,7 @@ interface ColorRow {
   pokemon_v2_pokemoncolornames: { language_id: number; name: string }[]
 }
 interface SpeciesColorRow { id: number; pokemon_color_id: number | null }
+interface EvolutionRow { id: number; evolves_from_species_id: number }
 
 /**
  * Comprueba qué variante de sprite existe para cada Pokémon.
@@ -425,10 +454,21 @@ async function main(): Promise<void> {
   const typesByPokemon = new Map<number, { slot: number; typeId: number }[]>()
   let memberships = 0
 
+  // Slug de tipo -> id, para guardar el grafo como enteros en vez de cadenas.
+  // Solo los 18 reales: `damage_relations` menciona alguno descartado y esos se
+  // filtran al no estar en el mapa.
+  const typeIdBySlug = new Map(typeResponses.map((raw) => [raw.name, raw.id]))
+  const toTypeIds = (refs: NamedRef[]): number[] =>
+    refs.map((r) => typeIdBySlug.get(r.name)).filter((id): id is number => id !== undefined)
+
   for (const raw of typeResponses) {
     const es = pickLang(raw.names, 'es')
     const alt = pickLang(raw.names, 'es-419')
     if (!es) throw new Error(`El tipo ${raw.name} no trae nombre en español`)
+
+    const str = toTypeIds(raw.damage_relations.double_damage_to)
+    const wk = toTypeIds(raw.damage_relations.double_damage_from)
+    const nil = toTypeIds(raw.damage_relations.no_damage_to)
 
     types.push({
       id: raw.id,
@@ -436,6 +476,11 @@ async function main(): Promise<void> {
       en: pickLang(raw.names, 'en') ?? raw.name,
       es,
       ...(alt && alt !== es ? { alt } : {}),
+      // Las listas vacías se omiten: nueve de los dieciocho tipos no son
+      // inmunes a nada, y guardar `[]` sería ruido en el archivo.
+      ...(str.length > 0 ? { str } : {}),
+      ...(wk.length > 0 ? { wk } : {}),
+      ...(nil.length > 0 ? { nil } : {}),
     })
 
     for (const entry of raw.pokemon) {
@@ -555,6 +600,7 @@ async function main(): Promise<void> {
       ...(esGenus ? { gEs: intern(esGenus, genusEs, genusEsIndex) } : {}),
       gen,
       c: color,
+      ...(text.evolvesFrom.has(basic.id) ? { evo: text.evolvesFrom.get(basic.id)! } : {}),
       // Las descripciones NO se internan: a diferencia de los géneros —"Pokémon
       // Semilla" lo comparten tres especies— cada entrada de Pokédex es única,
       // así que un diccionario solo añadiría una indirección y 1025 enteros.
@@ -633,6 +679,8 @@ async function main(): Promise<void> {
   log(`  especies sin género en español: ${missingGenusEs.length} (usan el inglés)`)
   log(`  especies sin descripción en español: ${missingFlavorEs.length} (usan la inglesa)`)
   log(`  colores: ${text.colors.length}`)
+  log(`  especies que evolucionan de otra: ${text.evolvesFrom.size}`)
+  log(`  tipos con grafo de ventajas: ${types.filter((t) => t.str !== undefined).length}`)
 }
 
 main().catch((cause: unknown) => {

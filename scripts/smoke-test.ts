@@ -36,7 +36,31 @@ import { groupLabel, tagLabel } from '../src/i18n/strings.ts'
 import { readStoredLang, storeLang } from '../src/i18n/lang-storage.ts'
 import type { Filters } from '../src/lib/index-types.ts'
 import { compareIds, SCORE } from '../src/lib/scoring.ts'
-import { ALT_FORM_ID_THRESHOLD, GROUP_BY, REDUCE_MAX_DOCS, TYPE_COLORS } from '../src/constants.ts'
+import {
+  ALT_FORM_ID_THRESHOLD,
+  GROUP_BY,
+  REDUCE_MAX_DOCS,
+  SCOPE,
+  TYPE_COLORS,
+} from '../src/constants.ts'
+import { EDGE, hasGraphData, NODE, nodeKey, neighbours } from '../src/lib/graph.ts'
+import { readStoredTrail, storeTrail, visit } from '../src/lib/trail.ts'
+import { TRAIL_MAX } from '../src/constants.ts'
+import type { GraphNode } from '../src/lib/graph.ts'
+import { buildProfileIndex, exploreSuggestions, recommend } from '../src/lib/recommend.ts'
+import type { ProfileIndex } from '../src/lib/recommend.ts'
+import { readStoredRatings, storeRatings, toggleRating } from '../src/lib/ratings.ts'
+import { RATING } from '../src/constants.ts'
+import {
+  allCorpusStats,
+  DICTIONARY,
+  explainTerm,
+  heapsCurve,
+  heapsFit,
+  heapsPredict,
+  heapsSelfCheck,
+  speciesTokenLists,
+} from '../src/lib/stats.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const CORPUS_PATH = resolve(HERE, '../public/data/pokedex.v1.json')
@@ -1465,5 +1489,949 @@ describe('reducción de la consulta', () => {
       assert.ok(termino.df >= reducedDf(index, termino.term), 'el df no puede encoger')
       assert.ok(termino.forms.length >= 1 && termino.forms.includes(termino.term))
     }
+  })
+})
+
+/* ========================================================================== */
+
+describe('ley de Zipf', () => {
+  it('el texto corrido la cumple: el exponente sale cerca de 1', () => {
+    const { zipf } = allCorpusStats(index)[SCOPE.DESCRIPTION]
+
+    // f(r) = C / r^s, con s ≈ 1. Los límites van holgados a propósito: lo que se
+    // fija es que la ley se cumpla, no el tercer decimal, para que regenerar el
+    // corpus con `npm run corpus` no rompa la prueba.
+    assert.ok(zipf.s > 0.85 && zipf.s < 1.15, `el exponente salió ${zipf.s.toFixed(3)}`)
+    assert.ok(zipf.r2 > 0.95, `el ajuste salió R²=${zipf.r2.toFixed(4)}`)
+  })
+
+  it('EL CONTRASTE: el vocabulario controlado NO la cumple', () => {
+    // Éste es el resultado que de verdad enseña algo. Zipf es una ley del
+    // lenguaje natural; los nombres propios de un catálogo no son lenguaje
+    // natural, y se nota en los dos indicadores a la vez.
+    const texto = allCorpusStats(index)[SCOPE.DESCRIPTION].zipf
+    const nombres = allCorpusStats(index)[SCOPE.IDENTITY].zipf
+
+    assert.ok(
+      nombres.s < texto.s - 0.3,
+      `el exponente de los nombres (${nombres.s.toFixed(3)}) debería estar muy por ` +
+        `debajo del de las descripciones (${texto.s.toFixed(3)})`,
+    )
+    assert.ok(
+      nombres.r2 < texto.r2 - 0.1,
+      `y el ajuste debería ser claramente peor: ${nombres.r2.toFixed(3)} vs ${texto.r2.toFixed(3)}`,
+    )
+  })
+
+  it('la mitad del vocabulario aparece una sola vez', () => {
+    // Hapax legomena. En lenguaje natural rondan la mitad del vocabulario, y es
+    // la otra cara de Zipf: la cola larga pesa mucho más que la cabeza.
+    const { zipf } = allCorpusStats(index)[SCOPE.DESCRIPTION]
+    const proporcion = zipf.hapax / zipf.vocabulary
+    assert.ok(proporcion > 0.4 && proporcion < 0.6, `hapax: ${(100 * proporcion).toFixed(1)}%`)
+  })
+
+  it('la frecuencia decrece de forma monótona con el rango', () => {
+    const { curve } = allCorpusStats(index)[SCOPE.DESCRIPTION].zipf
+    assert.ok(curve.length > 50, 'la curva debe tener puntos suficientes para dibujarse')
+    for (let i = 1; i < curve.length; i += 1) {
+      assert.ok(curve[i - 1]!.rank < curve[i]!.rank, 'los rangos deben ir en aumento')
+      assert.ok(
+        curve[i - 1]!.frequency >= curve[i]!.frequency,
+        `la frecuencia subió del rango ${curve[i - 1]!.rank} al ${curve[i]!.rank}`,
+      )
+    }
+  })
+
+  it('AUDITORÍA: la cabeza son palabras vacías, pero la lista va más allá', () => {
+    const { audit } = allCorpusStats(index)[SCOPE.DESCRIPTION]
+
+    // Las dos mitades del argumento, y dicen cosas opuestas a propósito.
+    // 1) La frecuencia respalda la lista: su cabeza es casi toda funcional.
+    assert.ok(
+      audit.inList / audit.head > 0.85,
+      `solo ${audit.inList} de ${audit.head} de la cabeza están en la lista`,
+    )
+    // 2) Pero la frecuencia sola jamás habría construido la lista: la mayoría de
+    //    sus palabras no aparecen por ninguna parte de la cabeza.
+    assert.ok(
+      audit.beyondHead > audit.inList * 2,
+      `${audit.beyondHead} vacías quedan fuera de la cabeza; deberían ser muchas más ` +
+        `que las ${audit.inList} que sí alcanza`,
+    )
+  })
+})
+
+/* ========================================================================== */
+
+describe('ley de Heaps', () => {
+  it('el vocabulario crece como una potencia del texto', () => {
+    const { heaps } = allCorpusStats(index)[SCOPE.DESCRIPTION]
+
+    // V = K·N^β. El rango de manual para β es 0,4-0,6.
+    assert.ok(heaps.beta > 0.45 && heaps.beta < 0.7, `β salió ${heaps.beta.toFixed(3)}`)
+    assert.ok(heaps.r2 > 0.99, `el ajuste salió R²=${heaps.r2.toFixed(4)}`)
+    assert.ok(heaps.k > 0, 'K debe ser positivo')
+  })
+
+  it('EL CONTRASTE: los nombres propios crecen casi linealmente', () => {
+    // β cerca de 1 significa que casi ninguna palabra se repite: cada Pokémon
+    // nuevo trae un nombre nuevo. Es lo contrario de un texto.
+    const texto = allCorpusStats(index)[SCOPE.DESCRIPTION].heaps
+    const nombres = allCorpusStats(index)[SCOPE.IDENTITY].heaps
+    assert.ok(
+      nombres.beta > texto.beta + 0.15,
+      `β de nombres (${nombres.beta.toFixed(3)}) debería superar claramente al de ` +
+        `descripciones (${texto.beta.toFixed(3)})`,
+    )
+  })
+
+  it('PREDICE: ajustada con el 80 % acierta el vocabulario del total', () => {
+    // Lo que convierte la ley en una afirmación falsable en vez de una curva
+    // bonita. Si no describiera este corpus, el error sería grande.
+    const { error, predicted, actual } = heapsSelfCheck(
+      speciesTokenLists(index, SCOPE.DESCRIPTION),
+    )
+    assert.ok(
+      Math.abs(error) < 0.1,
+      `predijo ${predicted.toFixed(0)} y el corpus tiene ${actual}: ${(100 * error).toFixed(1)}%`,
+    )
+  })
+
+  it('descartar el arranque de la curva mejora la predicción', () => {
+    // El transitorio inicial es mucho más empinado y sesga la regresión al alza.
+    // Ver HEAPS_WARMUP: es la diferencia entre un número decorativo y uno útil.
+    const porEspecie = speciesTokenLists(index, SCOPE.DESCRIPTION)
+    const curva = heapsCurve(porEspecie)
+    const total = curva[curva.length - 1]!
+    const corte = Math.floor(curva.length * 0.8)
+
+    const ingenuo = heapsFit(curva.slice(0, corte), 0)
+    const conVentana = heapsFit(curva.slice(0, corte))
+
+    const errIngenuo = Math.abs(heapsPredict(ingenuo, total.tokens) - total.vocabulary)
+    const errVentana = Math.abs(heapsPredict(conVentana, total.tokens) - total.vocabulary)
+
+    assert.ok(
+      errVentana < errIngenuo,
+      `la ventana debería acercar la predicción: ${errVentana.toFixed(0)} vs ${errIngenuo.toFixed(0)}`,
+    )
+    assert.ok(ingenuo.slope > conVentana.slope, 'el ajuste ingenuo sobreestima β')
+  })
+
+  it('la curva es monótona y reproducible', () => {
+    const porEspecie = speciesTokenLists(index, SCOPE.DESCRIPTION)
+    const a = heapsCurve(porEspecie)
+    const b = heapsCurve(porEspecie)
+
+    // El barajado lleva semilla fija: sin eso, cada ejecución daría otro β y no
+    // se podría afirmar nada en una prueba.
+    assert.deepEqual(a, b, 'dos curvas de los mismos datos deben ser idénticas')
+
+    for (let i = 1; i < a.length; i += 1) {
+      assert.ok(a[i - 1]!.tokens < a[i]!.tokens, 'los tokens solo pueden crecer')
+      assert.ok(a[i - 1]!.vocabulary <= a[i]!.vocabulary, 'el vocabulario no puede encoger')
+    }
+  })
+})
+
+/* ========================================================================== */
+
+describe('estadísticas contra el índice', () => {
+  it('la medición reproduce el índice, no describe otro corpus', () => {
+    // La comprobación que ata las estadísticas a la realidad: el vocabulario que
+    // cuenta Zipf sobre las descripciones tiene que ser EXACTAMENTE el
+    // diccionario de descripción que construyó el índice. Si divergen, la
+    // medición está tokenizando de otra forma y no dice nada sobre este motor.
+    const { zipf } = allCorpusStats(index)[SCOPE.DESCRIPTION]
+    assert.equal(zipf.vocabulary, index.stats.textTerms)
+  })
+
+  it('se cuenta una vez por especie, no por documento', () => {
+    // Las 326 formas alternas heredan la entrada de su especie. Contarlas
+    // repetiría el mismo texto y aplanaría la curva de Heaps.
+    const porEspecie = speciesTokenLists(index, SCOPE.DESCRIPTION)
+    const especies = new Set(index.docs.map((d) => d.speciesIdx)).size
+    assert.equal(porEspecie.length, especies)
+    assert.ok(porEspecie.length < index.docs.length, 'hay menos especies que documentos')
+  })
+
+  it('cada texto distinto se cuenta una sola vez', () => {
+    // El índice usa el inglés como respaldo cuando falta el español, así que
+    // descEs y descEn son la MISMA cadena en 127 especies, y nameEs coincide con
+    // nameEn en casi todas. Contar las dos copias inflaría la frecuencia.
+    const conRespaldo = index.docs.filter((d) => d.descEs === d.descEn && d.descEs.length > 0)
+    assert.ok(conRespaldo.length > 100, 'debería haber especies con respaldo al inglés')
+
+    const doc = conRespaldo[0]!
+    const tokensDelTexto = tokenize(doc.descEs).filter((t) => t !== 'pokemon').length
+    const porEspecie = speciesTokenLists(index, SCOPE.DESCRIPTION)
+    const indiceEspecie = [...new Set(index.canonicalOrder.map((id) => index.docs[id]!.speciesIdx))]
+      .indexOf(doc.speciesIdx)
+    assert.equal(
+      porEspecie[indiceEspecie]!.length,
+      tokensDelTexto,
+      'un texto con respaldo no debe contarse dos veces',
+    )
+  })
+})
+
+/* ========================================================================== */
+
+describe('el índice invertido, explicado', () => {
+  it('la unión coincide con lo que ya consulta el motor', () => {
+    // Ata el explorador al buscador: si algún día divergen, esta prueba lo
+    // dice. Enseñar una cosa distinta de la que el motor usa sería peor que no
+    // enseñar nada.
+    for (const term of ['agua', 'mejillas', 'pikachu', 'dragon', 'raton']) {
+      const explicacion = explainTerm(index, term)!
+      const delMotor = unionSorted(termPostings(index, term), describedPostings(index, term))
+      assert.deepEqual(explicacion.union, delMotor, `"${term}" no coincide con el motor`)
+    }
+  })
+
+  it('un término puede vivir en VARIOS diccionarios, con listas distintas', () => {
+    // Es lo que ningún filtro sobre un array puede imitar, y la razón de que el
+    // índice tenga un diccionario por campo en vez de una tabla con etiquetas.
+    const pikachu = explainTerm(index, 'pikachu')!
+    assert.ok(pikachu.entries.length >= 2, 'debería vivir en más de un diccionario')
+
+    const nombres = pikachu.entries.find((e) => e.dictionary === DICTIONARY.NAMES)!
+    const palabras = pikachu.entries.find((e) => e.dictionary === DICTIONARY.WORDS)!
+    assert.equal(nombres.docIds.length, 1, 'un solo Pokémon SE LLAMA pikachu')
+    assert.ok(
+      palabras.docIds.length > nombres.docIds.length,
+      'pero varias formas alternas CONTIENEN la palabra',
+    )
+  })
+
+  it('las listas que enseña son las del índice, intactas', () => {
+    const explicacion = explainTerm(index, 'agua')!
+    for (const entrada of explicacion.entries) {
+      const terms =
+        entrada.dictionary === DICTIONARY.NAMES
+          ? index.nameTerms
+          : entrada.dictionary === DICTIONARY.WORDS
+            ? index.segTerms
+            : entrada.dictionary === DICTIONARY.FACETS
+              ? index.facetTerms
+              : index.textTerms
+      assert.equal(terms[entrada.at], explicacion.token, 'la posición debe ser la del término')
+      for (let i = 1; i < entrada.docIds.length; i += 1) {
+        assert.ok(entrada.docIds[i - 1]! < entrada.docIds[i]!, 'los postings van ascendentes')
+      }
+    }
+  })
+
+  it('NO HAY BARRIDO: bastan unas pocas comparaciones', () => {
+    // La cifra entera del argumento. El diccionario más grande tiene 12 322
+    // términos y encontrar uno cuesta ceil(log2(12322)) = 14 comparaciones.
+    // Un barrido habría hecho 12 322.
+    const explicacion = explainTerm(index, 'mejillas')!
+    const entrada = explicacion.entries[0]!
+    assert.equal(entrada.dictionary, DICTIONARY.TEXT, 'solo describe, no identifica')
+    assert.ok(entrada.probes < 20, `${entrada.probes} comparaciones para ${entrada.size} términos`)
+    assert.ok(
+      entrada.probes < entrada.size / 100,
+      'las comparaciones deben ser órdenes de magnitud menos que los términos',
+    )
+  })
+
+  it('un término ausente no vive en ninguna parte', () => {
+    // Es, literalmente, el motivo de descarte 'ausente' de la reducción.
+    const explicacion = explainTerm(index, 'charmender')!
+    assert.equal(explicacion.entries.length, 0)
+    assert.equal(explicacion.df, 0)
+  })
+
+  it('cuenta las especies aparte del df', () => {
+    // Menos especies que documentos, porque las formas alternas heredan el
+    // texto. Es exactamente la razón por la que `searchReduced` colapsa.
+    const explicacion = explainTerm(index, 'raton')!
+    assert.ok(explicacion.species > 0)
+    assert.ok(explicacion.species <= explicacion.df, 'no puede haber más especies que documentos')
+  })
+
+  it('solo se consulta el primer token, y se dice cuál se ignoró', () => {
+    const explicacion = explainTerm(index, 'agua fuego')!
+    assert.equal(explicacion.token, 'agua')
+    assert.deepEqual(explicacion.ignored, ['fuego'])
+    assert.equal(explainTerm(index, '   '), null, 'sin tokens no hay nada que explicar')
+  })
+})
+
+/* ========================================================================== */
+
+describe('robustez de las leyes', () => {
+  it('β no depende de la permutación elegida', () => {
+    // La curva se construye sobre un barajado con semilla fija. Si β cambiara
+    // mucho al cambiar la semilla, la cifra sería un artefacto de esa semilla y
+    // no una propiedad del corpus.
+    const porEspecie = speciesTokenLists(index, SCOPE.DESCRIPTION)
+    const betas = [1, 7, 42, 2024].map((seed) => heapsFit(heapsCurve(porEspecie, seed)).slope)
+
+    const min = Math.min(...betas)
+    const max = Math.max(...betas)
+    assert.ok(
+      max - min < 0.06,
+      `β varía entre ${min.toFixed(3)} y ${max.toFixed(3)} según la semilla`,
+    )
+    for (const beta of betas) assert.ok(beta > 0.45 && beta < 0.7, `β=${beta.toFixed(3)}`)
+  })
+
+  it('ZIPF delata un artefacto del tokenizador', () => {
+    // El mejor resultado del ejercicio, y no estaba planeado: al mirar la
+    // cabeza de la distribución aparece el token "s", que no es una palabra.
+    // `tokenize` parte por el apóstrofo, así que "it's" y "Pokémon's" dejan una
+    // "s" suelta.
+    //
+    // No se arregla metiendo "s" en la lista de vacías: la regla de longitud
+    // mínima de la reducción ya la descarta, y taparlo en la lista escondería
+    // el defecto en vez de documentarlo. Si se quisiera arreglar, habría que
+    // tocar `tokenize` y volver a medirlo todo.
+    const { audit } = allCorpusStats(index)[SCOPE.DESCRIPTION]
+    assert.ok(
+      audit.missing.some((m) => m.term === 's'),
+      'la cabeza debería incluir el token "s"',
+    )
+    assert.ok(audit.missing.length <= 5, 'y poco más: la cabeza es casi toda funcional')
+  })
+})
+
+/* ========================================================================== */
+
+describe('recomendaciones por realimentación de relevancia', () => {
+  let profile: ProfileIndex
+
+  before(() => {
+    profile = buildProfileIndex(index)
+  })
+
+  /** El número de Pokédex de una especie, que es como se guardan las valoraciones. */
+  const poke = (slug: string): number => index.docs.find((d) => d.slug === slug)!.pokeId
+  const gustan = (...slugs: string[]) =>
+    new Map(slugs.map((s) => [poke(s), RATING.LIKE] as const))
+
+  it('sin valoraciones no recomienda nada, y no revienta', () => {
+    const vacio = recommend(index, profile, new Map())
+    assert.deepEqual(vacio.docIds, [])
+    assert.equal(vacio.because, null)
+  })
+
+  it('recomienda Pokémon realmente parecidos', () => {
+    // La métrica: qué fracción del resultado comparte el tipo primario del
+    // Pokémon valorado. El azar da 5,6 % (uno de dieciocho tipos). La cota va
+    // holgada a propósito: lo que se fija es que recomiende parecidos, no el
+    // decimal, para que regenerar el corpus no rompa la prueba.
+    const bases = index.docs.filter((d) => !d.isAltForm)
+    let aciertos = 0
+    let total = 0
+
+    for (const doc of bases) {
+      const { docIds } = recommend(index, profile, new Map([[doc.pokeId, RATING.LIKE]]), 6)
+      for (const otro of docIds) {
+        total += 1
+        if (index.docs[otro]!.typeIds[0] === doc.typeIds[0]) aciertos += 1
+      }
+    }
+
+    const precision = aciertos / total
+    assert.ok(precision > 0.5, `solo el ${(100 * precision).toFixed(1)}% comparte tipo primario`)
+  })
+
+  it('MEJORA cuanto más se valora', () => {
+    // Lo que se le pide a un recomendador: que aprenda. Se comparan valoraciones
+    // coherentes —varios del mismo tipo— con una sola.
+    const medir = (ratings: Map<number, 1 | -1>, tipo: number): number => {
+      const { docIds } = recommend(index, profile, ratings, 6)
+      if (docIds.length === 0) return 0
+      return docIds.filter((d) => index.docs[d]!.typeIds[0] === tipo).length / docIds.length
+    }
+
+    const fuego = index.docs.filter((d) => !d.isAltForm && d.typeIds[0] === 10).slice(0, 5)
+    const uno = medir(new Map([[fuego[0]!.pokeId, RATING.LIKE]]), 10)
+    const cinco = medir(new Map(fuego.map((d) => [d.pokeId, RATING.LIKE])), 10)
+
+    assert.ok(
+      cinco >= uno,
+      `con cinco valoraciones (${cinco.toFixed(2)}) no debería acertar menos que con una (${uno.toFixed(2)})`,
+    )
+    assert.ok(cinco > 0.6, `con cinco valoraciones acierta ${(100 * cinco).toFixed(0)}%`)
+  })
+
+  it('nunca recomienda lo que ya se valoró', () => {
+    const ratings = new Map<number, 1 | -1>([
+      [poke('charmander'), RATING.LIKE],
+      [poke('squirtle'), RATING.LIKE],
+      [poke('charmeleon'), RATING.DISLIKE],
+    ])
+    const { docIds } = recommend(index, profile, ratings, 40)
+    for (const docId of docIds) {
+      assert.ok(
+        !ratings.has(index.docs[docId]!.pokeId),
+        `${index.docs[docId]!.slug} ya estaba valorado`,
+      )
+    }
+  })
+
+  it('una especie, una fila', () => {
+    // Charizard y sus tres formas Mega comparten tipo, categoría, generación y
+    // color: sin colapsar ocuparían los cuatro primeros puestos siendo el mismo.
+    const { docIds } = recommend(index, profile, gustan('charmander'), 40)
+    const especies = docIds.map((d) => index.docs[d]!.speciesIdx)
+    assert.equal(new Set(especies).size, especies.length, 'hay dos formas de la misma especie')
+  })
+
+  it('el RECHAZO cambia lo que se recomienda', () => {
+    // Y no solo saca al rechazado: saca también a los que se le parecen, que es
+    // justo lo que hace la parte negativa de Rocchio.
+    const solo = recommend(index, profile, gustan('charmander'), 10).docIds
+    const conRechazo = recommend(
+      index,
+      profile,
+      new Map([
+        [poke('charmander'), RATING.LIKE],
+        [poke('charmeleon'), RATING.DISLIKE],
+      ]),
+      10,
+    ).docIds
+
+    assert.notDeepEqual(solo, conRechazo, 'rechazar debería cambiar el resultado')
+    const salieron = solo.filter((d) => !conRechazo.includes(d))
+    assert.ok(salieron.length > 1, 'debería salir el rechazado y alguno parecido a él')
+  })
+
+  it('la CATEGORÍA es un concepto entero, no palabras sueltas', () => {
+    // El fallo que destapó la medición: partida en palabras, "Pokémon Tiny
+    // Turtle" comparte el token "tiny" con "Tiny Bird", y a Squirtle le
+    // recomendaba pájaros. Tratarla como un concepto indivisible lo arregla.
+    const squirtle = index.docs.find((d) => d.slug === 'squirtle')!
+    assert.ok(squirtle.genusEn.toLowerCase().includes('tiny'), 'la premisa de la prueba')
+
+    const pajaro = index.docs.find((d) => d.genusEn === 'Tiny Bird Pokémon')
+    assert.ok(pajaro !== undefined, 'debería existir alguna categoría "Tiny Bird"')
+
+    const { docIds } = recommend(index, profile, gustan('squirtle'), 10)
+    for (const docId of docIds) {
+      assert.notEqual(
+        index.docs[docId]!.genusEn,
+        'Tiny Bird Pokémon',
+        'un pájaro no se parece a una tortuga por compartir la palabra "tiny"',
+      )
+    }
+    // Y lo que sí debe salir: Pokémon de agua.
+    const agua = docIds.filter((d) => index.docs[d]!.typeIds.includes(11)).length
+    assert.ok(agua > docIds.length / 2, `solo ${agua} de ${docIds.length} son de agua`)
+  })
+
+  it('el perfil explica por qué: la categoría pesa más que la generación', () => {
+    // El perfil es visible en pantalla, así que debe tener sentido al leerlo.
+    // El idf hace el trabajo: una categoría la comparten dos o tres Pokémon y
+    // una generación, ciento y pico.
+    const { top, because } = recommend(index, profile, gustan('charmander'), 6)
+    assert.ok(top.length > 0)
+    assert.equal(index.docs[because!]!.slug, 'charmander')
+
+    const categoria = top.find((t) => t.term.startsWith('K'))!
+    const generacion = top.find((t) => t.term.startsWith('g'))
+    assert.ok(categoria !== undefined, 'la categoría debería estar en el perfil')
+    if (generacion !== undefined) {
+      assert.ok(categoria.weight > generacion.weight, 'la categoría debe pesar más')
+    }
+  })
+
+  it('las valoraciones se recuerdan entre visitas', () => {
+    const store = new Map<string, string>()
+    const original = globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+      },
+      configurable: true,
+    })
+    try {
+      const ratings = new Map<number, 1 | -1>([
+        [25, RATING.LIKE],
+        [19, RATING.DISLIKE],
+      ])
+      storeRatings(ratings)
+      assert.deepEqual([...readStoredRatings()], [...ratings])
+
+      // Y el orden se conserva, que es lo que hace que «porque te gustó X»
+      // nombre al ÚLTIMO valorado y no al de número más alto.
+      assert.deepEqual([...readStoredRatings().keys()], [25, 19])
+
+      // Un valor corrupto no puede tirar la aplicación: se descarta lo que no se
+      // reconoce y se conserva lo demás.
+      store.set('tarea1-buscador:ratings', '[[25,1],["x",1],[7,99],[4,-1],"basura"]')
+      assert.deepEqual(
+        [...readStoredRatings()],
+        [
+          [25, RATING.LIKE],
+          [4, RATING.DISLIKE],
+        ],
+      )
+
+      store.set('tarea1-buscador:ratings', 'esto no es json')
+      assert.deepEqual([...readStoredRatings()], [])
+    } finally {
+      if (original === undefined) {
+        Reflect.deleteProperty(globalThis, 'localStorage')
+      } else {
+        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true })
+      }
+    }
+  })
+
+  it('volver a pulsar el mismo botón quita la valoración', () => {
+    let ratings = toggleRating(new Map(), 25, RATING.LIKE)
+    assert.equal(ratings.get(25), RATING.LIKE)
+    ratings = toggleRating(ratings, 25, RATING.DISLIKE)
+    assert.equal(ratings.get(25), RATING.DISLIKE, 'cambiar de opinión sustituye')
+    ratings = toggleRating(ratings, 25, RATING.DISLIKE)
+    assert.equal(ratings.has(25), false, 'repetir el mismo quita la valoración')
+  })
+})
+
+/* ========================================================================== */
+
+describe('grafo de seguimiento', () => {
+  const doc = (slug: string): number => index.docs.find((d) => d.slug === slug)!.docId
+  const poke = (slug: string): GraphNode => ({ kind: NODE.POKEMON, docId: doc(slug) })
+  const tipo = (typeId: number): GraphNode => ({ kind: NODE.TYPE, typeId })
+  const edges = (node: GraphNode) => new Map(neighbours(index, node).map((g) => [g.edge, g.nodes]))
+
+  it('el corpus trae los datos de relación', () => {
+    // Si esto falla, el corpus es anterior al grafo: hay que regenerarlo.
+    // Las demás pruebas del bloque dependen de ello.
+    assert.ok(hasGraphData(index), 'ejecuta `npm run corpus` para traer el grafo')
+    assert.ok(index.evolvesFrom.size > 400, `solo ${index.evolvesFrom.size} aristas de evolución`)
+  })
+
+  it('la evolución es coherente en los dos sentidos', () => {
+    // El corpus guarda solo la arista hacia atrás y la de ida se deriva
+    // invirtiéndola, así que no pueden contradecirse — pero conviene fijarlo,
+    // porque es la invariante que justifica no guardar las dos.
+    for (const [hijo, padre] of index.evolvesFrom) {
+      const hijos = index.evolvesTo.get(padre)
+      assert.ok(hijos !== undefined, `${index.docs[padre]!.slug} debería tener evoluciones`)
+      assert.ok(
+        hijos.includes(hijo),
+        `${index.docs[hijo]!.slug} evoluciona de ${index.docs[padre]!.slug}, pero no al revés`,
+      )
+    }
+    const total = [...index.evolvesTo.values()].reduce((a, l) => a + l.length, 0)
+    assert.equal(total, index.evolvesFrom.size, 'las dos direcciones deben tener las mismas aristas')
+  })
+
+  it('la evolución no tiene ciclos', () => {
+    // Un ciclo haría que recorrer la línea evolutiva no terminara nunca.
+    for (const inicio of index.evolvesFrom.keys()) {
+      const visto = new Set<number>([inicio])
+      let actual = index.evolvesFrom.get(inicio)
+      while (actual !== undefined) {
+        assert.ok(!visto.has(actual), `ciclo evolutivo en ${index.docs[actual]!.slug}`)
+        visto.add(actual)
+        actual = index.evolvesFrom.get(actual)
+      }
+      // Y nadie evoluciona de sí mismo.
+      assert.notEqual(index.evolvesFrom.get(inicio), inicio)
+    }
+  })
+
+  it('la ramificación se conserva: Eevee tiene varias evoluciones', () => {
+    const eevee = index.evolvesTo.get(doc('eevee'))
+    assert.ok(eevee !== undefined && eevee.length > 5, `Eevee tiene ${eevee?.length ?? 0}`)
+  })
+
+  it('el grafo de tipos es simétrico donde debe serlo', () => {
+    // Si Fuego le gana a Planta, Planta tiene que perder contra Fuego. Son dos
+    // listas distintas del corpus, así que podrían no cuadrar.
+    for (const tipoA of index.types) {
+      for (const idB of tipoA.str ?? []) {
+        const tipoB = index.typeById.get(idB)!
+        assert.ok(
+          (tipoB.wk ?? []).includes(tipoA.id),
+          `${tipoA.es} le gana a ${tipoB.es}, pero ${tipoB.es} no pierde contra ${tipoA.es}`,
+        )
+      }
+    }
+  })
+
+  it('ninguna arista cuelga: todo vecino existe', () => {
+    const nodos: GraphNode[] = [
+      ...index.types.map((t) => tipo(t.id)),
+      ...index.canonicalOrder.slice(0, 120).map((docId) => ({ kind: NODE.POKEMON, docId }) as const),
+    ]
+    for (const nodo of nodos) {
+      for (const grupo of neighbours(index, nodo)) {
+        assert.ok(grupo.nodes.length > 0, `grupo vacío de ${grupo.edge}: no debería devolverse`)
+        for (const vecino of grupo.nodes) {
+          switch (vecino.kind) {
+            case NODE.POKEMON:
+              assert.ok(index.docs[vecino.docId] !== undefined, `docId ${vecino.docId} no existe`)
+              break
+            case NODE.TYPE:
+              assert.ok(index.typeById.has(vecino.typeId), `typeId ${vecino.typeId} no existe`)
+              break
+            case NODE.GENERATION:
+              assert.ok(index.generationById.has(vecino.genId), `genId ${vecino.genId} no existe`)
+              break
+            case NODE.COLOR:
+              assert.ok(index.colorById.has(vecino.colorId), `colorId ${vecino.colorId} no existe`)
+              break
+          }
+        }
+      }
+    }
+  })
+
+  it('un Pokémon sin evolución no enseña una fila vacía', () => {
+    const sinEvo = index.docs.find(
+      (d) => !d.isAltForm && !index.evolvesTo.has(d.docId) && !index.evolvesFrom.has(d.docId),
+    )!
+    const clases = neighbours(index, { kind: NODE.POKEMON, docId: sinEvo.docId }).map((g) => g.edge)
+    assert.ok(!clases.includes(EDGE.EVOLVES_TO), `${sinEvo.slug} no evoluciona a nada`)
+    assert.ok(!clases.includes(EDGE.EVOLVES_FROM))
+    assert.ok(clases.includes(EDGE.HAS_TYPE), 'pero sí tiene tipo')
+  })
+
+  it('una especie, una entrada, también aquí', () => {
+    // Los miembros de un tipo incluyen las formas alternas; ofrecerlas sería
+    // ofrecer el mismo Pokémon varias veces.
+    const miembros = edges(tipo(10)).get(EDGE.MEMBERS)!
+    const especies = miembros.map((n) => index.docs[(n as { docId: number }).docId]!.speciesIdx)
+    assert.equal(new Set(especies).size, especies.length)
+  })
+
+  it('EL PASEO: de un Pokémon a otro pasando por conceptos', () => {
+    // Charmander ─es de tipo→ Fuego ─le gana a→ Planta ─miembros→ un Pokémon
+    // de planta. Es el recorrido que justifica que el grafo sea heterogéneo:
+    // sin el tipo en medio no hay forma de llegar.
+    const inicio = poke('charmander')
+    const tipos = edges(inicio).get(EDGE.HAS_TYPE)!
+    assert.ok(tipos.length > 0)
+
+    const fuego = tipos[0]!
+    const gana = edges(fuego).get(EDGE.STRONG_AGAINST)!
+    assert.ok(gana.length > 0, 'el fuego le gana a algo')
+
+    const destino = edges(gana[0]!).get(EDGE.MEMBERS)!
+    assert.ok(destino.length > 0, 'ese tipo tiene miembros')
+
+    // Y se ha llegado a un Pokémon distinto del de partida.
+    const llegada = destino[0]!
+    assert.equal(llegada.kind, NODE.POKEMON)
+    assert.notEqual(nodeKey(llegada), nodeKey(inicio))
+  })
+
+
+})
+
+/* ========================================================================== */
+
+describe('el grafo no tiene callejones sin salida', () => {
+  /** Los parecidos, como los calcula la vista: con el recomendador. */
+  const similar = (docId: number): number[] => {
+    const profile = buildProfileIndex(index)
+    const doc = index.docs[docId]!
+    return recommend(index, profile, new Map([[doc.pokeId, RATING.LIKE]])).docIds
+  }
+
+  const doc = (slug: string): number => index.docs.find((d) => d.slug === slug)!.docId
+
+  it('TODO Pokémon ofrece varias formas distintas de seguir', () => {
+    // La prueba del arreglo. Antes de las aristas de generación, color y
+    // parecidos, 199 Pokémon tenían UNA sola clase de arista —su tipo— y la
+    // exploración se atascaba.
+    let minimo = Infinity
+    let peor = ''
+    for (const d of index.docs) {
+      const clases = neighbours(index, { kind: NODE.POKEMON, docId: d.docId }, similar).length
+      if (clases < minimo) {
+        minimo = clases
+        peor = d.slug
+      }
+    }
+    assert.ok(minimo >= 3, `${peor} solo ofrece ${minimo} clases de arista`)
+  })
+
+  it('las formas alternas también tienen su línea evolutiva', () => {
+    // Evolucionar es de la ESPECIE. `byPokeId` tiene una entrada por documento,
+    // así que preguntarle por una forma Mega devolvía esa misma forma y las
+    // aristas salían vacías: hace falta `speciesBase`.
+    const mega = index.docs.find((d) => d.slug === 'charizard-mega-x')
+    assert.ok(mega !== undefined, 'la premisa de la prueba')
+
+    const clases = neighbours(index, { kind: NODE.POKEMON, docId: mega.docId }, similar).map(
+      (g) => g.edge,
+    )
+    assert.ok(
+      clases.includes(EDGE.EVOLVES_FROM),
+      'Charizard Mega X debería evolucionar de Charmeleon, como Charizard',
+    )
+    assert.equal(index.speciesBase.size, 1025, 'una base por especie')
+  })
+
+  it('generación y color llevan de vuelta: la arista va en los dos sentidos', () => {
+    const charmander = index.docs[doc('charmander')]!
+    const grupos = new Map(
+      neighbours(index, { kind: NODE.POKEMON, docId: charmander.docId }, similar).map((g) => [
+        g.edge,
+        g.nodes,
+      ]),
+    )
+
+    const gen = grupos.get(EDGE.HAS_GENERATION)![0]!
+    const color = grupos.get(EDGE.HAS_COLOR)![0]!
+    assert.equal(gen.kind, NODE.GENERATION)
+    assert.equal(color.kind, NODE.COLOR)
+
+    // Y desde el concepto se vuelve a un Pokémon de ese grupo.
+    for (const concepto of [gen, color]) {
+      const miembros = neighbours(index, concepto).find((g) => g.edge === EDGE.MEMBERS)
+      assert.ok(miembros !== undefined && miembros.nodes.length > 0, 'debe tener miembros')
+      assert.ok(miembros.total > miembros.nodes.length, 'y recortarse enseñando el total')
+    }
+  })
+
+  it('la clave de un nodo distingue la CLASE, no solo el número', () => {
+    // Los identificadores son espacios de numeración distintos: la generación 5
+    // y el color 5 no tienen nada que ver. Una versión anterior los confundía
+    // con un cast que daba por hecho que solo había dos clases de nodo.
+    assert.notEqual(
+      nodeKey({ kind: NODE.GENERATION, genId: 5 }),
+      nodeKey({ kind: NODE.COLOR, colorId: 5 }),
+    )
+    assert.notEqual(nodeKey({ kind: NODE.TYPE, typeId: 5 }), nodeKey({ kind: NODE.GENERATION, genId: 5 }))
+    assert.equal(nodeKey({ kind: NODE.COLOR, colorId: 3 }), nodeKey({ kind: NODE.COLOR, colorId: 3 }))
+    assert.notEqual(nodeKey({ kind: NODE.POKEMON, docId: 7 }), nodeKey({ kind: NODE.TYPE, typeId: 7 }))
+  })
+
+  it('los parecidos nunca devuelven el punto de partida', () => {
+    // Sería el peor callejón sin salida: un botón que te deja donde estabas.
+    for (const slug of ['charmander', 'kangaskhan', 'pikachu', 'gengar']) {
+      const docId = doc(slug)
+      const grupo = neighbours(index, { kind: NODE.POKEMON, docId }, similar).find(
+        (g) => g.edge === EDGE.SIMILAR,
+      )
+      assert.ok(grupo !== undefined, `${slug} debería tener parecidos`)
+      for (const n of grupo.nodes) {
+        assert.notEqual(nodeKey(n), nodeKey({ kind: NODE.POKEMON, docId }), `${slug} se recomienda a sí mismo`)
+      }
+    }
+  })
+
+  it('los nodos nuevos existen y tienen miembros', () => {
+    assert.equal(index.generationById.size, 9)
+    assert.equal(index.colorById.size, 10)
+    assert.equal(index.byColor.size, 10, 'byColor debe estar expuesto en el índice')
+
+    for (const gen of index.generations) {
+      const m = neighbours(index, { kind: NODE.GENERATION, genId: gen.id })
+      assert.ok(m.length === 1 && m[0]!.total > 20, `${gen.es} tiene ${m[0]?.total ?? 0} miembros`)
+    }
+    for (const color of index.colors) {
+      const m = neighbours(index, { kind: NODE.COLOR, colorId: color.id })
+      assert.ok(m.length === 1 && m[0]!.total > 20, `${color.es} tiene ${m[0]?.total ?? 0}`)
+    }
+  })
+
+  it('una especie, una entrada, también en las aristas nuevas', () => {
+    for (const nodo of [
+      { kind: NODE.GENERATION, genId: 1 } as const,
+      { kind: NODE.COLOR, colorId: 8 } as const,
+    ]) {
+      const miembros = neighbours(index, nodo)[0]!.nodes
+      const especies = miembros.map((n) => index.docs[(n as { docId: number }).docId]!.speciesIdx)
+      assert.equal(new Set(especies).size, especies.length, 'hay dos formas de la misma especie')
+    }
+  })
+
+  it('sin la función de parecidos, el grafo sigue funcionando', () => {
+    // El grafo no depende del recomendador: lo acepta. Así se puede probar y
+    // razonar sobre él por separado.
+    const sinSimilar = neighbours(index, { kind: NODE.POKEMON, docId: doc('charmander') })
+    assert.ok(sinSimilar.length >= 4)
+    assert.ok(!sinSimilar.some((g) => g.edge === EDGE.SIMILAR))
+  })
+})
+
+/* ========================================================================== */
+
+describe('el recorrido no se pierde', () => {
+  it('visitar no borra lo anterior', () => {
+    // La regresión que arregla este módulo. El modelo antiguo guardaba un
+    // CAMINO y, al volver sobre un nodo ya visto, lo recortaba hasta él: medido
+    // sobre un paseo de 25 saltos, conservaba 14 nodos y perdía 12.
+    let trail: readonly number[] = []
+    for (const pokeId of [4, 25, 26, 172, 95]) trail = visit(trail, pokeId)
+    assert.deepEqual([...trail], [4, 25, 26, 172, 95])
+
+    // Volver sobre uno ya visitado no recorta nada, que es justo lo que fallaba.
+    trail = visit(trail, 4)
+    assert.deepEqual([...trail], [4, 25, 26, 172, 95], 'revisitar no debe perder nada')
+
+    trail = visit(trail, 1)
+    assert.deepEqual([...trail], [4, 25, 26, 172, 95, 1])
+  })
+
+  it('cada Pokémon aparece una vez, en el orden de su primera visita', () => {
+    let trail: readonly number[] = []
+    for (const pokeId of [4, 25, 4, 26, 25, 4]) trail = visit(trail, pokeId)
+    assert.deepEqual([...trail], [4, 25, 26], 'ni duplicados ni reordenación')
+  })
+
+  it('al llegar al tope se descarta lo más antiguo, no lo reciente', () => {
+    let trail: readonly number[] = []
+    for (let i = 1; i <= TRAIL_MAX + 5; i += 1) trail = visit(trail, i)
+
+    assert.equal(trail.length, TRAIL_MAX)
+    assert.equal(trail[trail.length - 1], TRAIL_MAX + 5, 'lo último visitado se conserva')
+    assert.equal(trail[0], 6, 'los cinco primeros se descartaron')
+  })
+
+  it('el recorrido sobrevive a recargar, y un valor corrupto no rompe nada', () => {
+    const store = new Map<string, string>()
+    const original = globalThis.localStorage
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => void store.set(key, value),
+      },
+      configurable: true,
+    })
+    try {
+      storeTrail([4, 25, 26])
+      assert.deepEqual(readStoredTrail(), [4, 25, 26], 'y en el mismo orden')
+
+      store.set('tarea1-buscador:trail', '[4,"x",25,-1,25,0,26]')
+      assert.deepEqual(readStoredTrail(), [4, 25, 26], 'se descarta lo que no se reconoce')
+
+      store.set('tarea1-buscador:trail', 'esto no es json')
+      assert.deepEqual(readStoredTrail(), [])
+
+      storeTrail([])
+      assert.deepEqual(readStoredTrail(), [], 'borrar el recorrido lo deja vacío')
+    } finally {
+      if (original === undefined) {
+        Reflect.deleteProperty(globalThis, 'localStorage')
+      } else {
+        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true })
+      }
+    }
+  })
+})
+
+/* ========================================================================== */
+
+describe('sugerencias al explorar', () => {
+  let profile: ProfileIndex
+  before(() => {
+    profile = buildProfileIndex(index)
+  })
+
+  const doc = (slug: string): number => index.docs.find((d) => d.slug === slug)!.docId
+  const mega = (docId: number): boolean =>
+    index.docs[docId]!.formSuffix?.startsWith('Mega') === true
+
+  it('NUNCA sugiere otra forma del Pokémon en el que se está', () => {
+    // El fallo que se veía en pantalla: estando en Charizard aparecía
+    // «Charizard (Mega Y)» entre sus parecidos, y estando en la Mega aparecía
+    // «Charizard». La causa era que se excluía el documento pero después se
+    // colapsaba por especie, eligiendo como representante otra forma.
+    for (const slug of ['charizard', 'charizard-mega-x', 'pikachu', 'eevee']) {
+      const yo = doc(slug)
+      const especie = index.docs[yo]!.speciesIdx
+      for (const sugerido of exploreSuggestions(index, profile, yo, [yo])) {
+        assert.notEqual(
+          index.docs[sugerido]!.speciesIdx,
+          especie,
+          `estando en ${slug} se sugiere ${index.docs[sugerido]!.slug}, que es el mismo Pokémon`,
+        )
+      }
+    }
+  })
+
+  it('las otras formas tienen su propia relación', () => {
+    // Se excluyen de los parecidos, así que necesitan una vía propia: es
+    // además donde tiene sentido verlas, porque ahí se sabe qué son.
+    const grupos = neighbours(index, { kind: NODE.POKEMON, docId: doc('charizard') })
+    const formas = grupos.find((g) => g.edge === EDGE.OTHER_FORMS)
+    assert.ok(formas !== undefined, 'Charizard tiene formas Mega y Gigamax')
+
+    const especie = index.docs[doc('charizard')]!.speciesIdx
+    for (const n of formas.nodes) {
+      const docId = (n as { docId: number }).docId
+      assert.equal(index.docs[docId]!.speciesIdx, especie, 'deben ser de la misma especie')
+      assert.notEqual(docId, doc('charizard'), 'y no él mismo')
+    }
+  })
+
+  it('EL RECORRIDO INCLINA: visitar Megas lleva a más Megas', () => {
+    // Sin el término de forma en el perfil, una Mega y su base son
+    // indistinguibles y esto es imposible. Medido: 0 Megas sin recorrido,
+    // 5 de 8 tras pasar por tres.
+    const charizard = doc('charizard')
+    const megas = [doc('charizard-mega-x'), doc('venusaur-mega'), doc('blastoise-mega')]
+
+    const sinRecorrido = exploreSuggestions(index, profile, charizard, [charizard], 8)
+    const conMegas = exploreSuggestions(index, profile, megas[0]!, [charizard, ...megas], 8)
+
+    const antes = sinRecorrido.filter(mega).length
+    const despues = conMegas.filter(mega).length
+    assert.ok(
+      despues > antes,
+      `tras visitar Megas deberían salir más: ${antes} antes, ${despues} después`,
+    )
+    assert.ok(despues >= 3, `solo ${despues} de 8 son Mega`)
+  })
+
+  it('la lista no se amontona en un solo tipo', () => {
+    // Charizard es Fuego Y Volador: sus sugerencias deberían reflejar las dos
+    // caras. Sin diversificar salían ocho Pokémon de solo tres tipos.
+    const r = exploreSuggestions(index, profile, doc('charizard'), [doc('charizard')], 8)
+    const tipos = new Set(r.flatMap((docId) => index.docs[docId]!.typeIds))
+    assert.ok(tipos.size >= 4, `solo ${tipos.size} tipos distintos en las sugerencias`)
+  })
+
+  it('no ofrece volver a donde ya se ha estado', () => {
+    // Explorar es llegar a sitios nuevos; para volver está la tira del
+    // recorrido. Sin este corte el solape crecía con el paseo: al salto quince,
+    // seis de cada veinte sugerencias eran sitios ya visitados.
+    const recorrido = ['charmander', 'charmeleon', 'charizard', 'moltres'].map(doc)
+    const actual = recorrido[recorrido.length - 1]!
+
+    for (const sugerido of exploreSuggestions(index, profile, actual, recorrido)) {
+      assert.ok(
+        !recorrido.includes(sugerido),
+        `${index.docs[sugerido]!.slug} ya estaba en el recorrido`,
+      )
+      // Ni otra forma de algo ya visitado: sería el mismo Pokémon.
+      const especies = recorrido.map((d) => index.docs[d]!.speciesIdx)
+      assert.ok(
+        !especies.includes(index.docs[sugerido]!.speciesIdx),
+        `${index.docs[sugerido]!.slug} es otra forma de uno ya visitado`,
+      )
+    }
+  })
+
+  it('las sugerencias van PRIMERO entre las relaciones', () => {
+    // Estando en Moltres, lo primero que se veía era «otras formas» con UNA
+    // tarjeta, y las veinte opciones buenas quedaban al fondo.
+    const grupos = neighbours(index, { kind: NODE.POKEMON, docId: doc('moltres') }, (docId) =>
+      exploreSuggestions(index, profile, docId, [doc('moltres')]),
+    )
+    assert.equal(grupos[0]!.edge, EDGE.SIMILAR, 'las sugerencias deben abrir la lista')
+    assert.ok(grupos[0]!.nodes.length > 10, 'y traer opciones de verdad')
+  })
+
+  it('sin recorrido también funciona, y no repite', () => {
+    const r = exploreSuggestions(index, profile, doc('kangaskhan'))
+    assert.ok(r.length > 10, 'debe ofrecer alternativas aunque no haya historial')
+    assert.equal(new Set(r).size, r.length, 'sin repetidos')
+    const especies = r.map((docId) => index.docs[docId]!.speciesIdx)
+    assert.equal(new Set(especies).size, especies.length, 'una especie, una entrada')
   })
 })

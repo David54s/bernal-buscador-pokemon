@@ -1,5 +1,14 @@
 import { useCallback, useMemo, useState } from 'react'
-import { GROUP_BY, MAX_ROWS_INITIAL, PAGE_SIZE, ROWS_STEP, type GroupBy } from './constants.ts'
+import type { Rating } from './constants.ts'
+import {
+  GROUP_BY,
+  MAX_ROWS_INITIAL,
+  PAGE_SIZE,
+  ROWS_STEP,
+  VIEW,
+  type GroupBy,
+  type View,
+} from './constants.ts'
 import { DebugPanel } from './components/DebugPanel.tsx'
 import { DidYouMean } from './components/DidYouMean.tsx'
 import { FacetPanel } from './components/FacetPanel.tsx'
@@ -7,6 +16,9 @@ import { ReductionPanel } from './components/ReductionPanel.tsx'
 import { GroupBySelect } from './components/GroupBySelect.tsx'
 import { LanguageToggle } from './components/LanguageToggle.tsx'
 import { ResultsGrid } from './components/ResultsGrid.tsx'
+import { StatsPanel } from './components/StatsPanel.tsx'
+import { GraphExplorer } from './components/GraphExplorer.tsx'
+import { PokemonRow } from './components/PokemonRow.tsx'
 import { RowList } from './components/RowList.tsx'
 import { SearchBar } from './components/SearchBar.tsx'
 import { StatusBanner } from './components/StatusBanner.tsx'
@@ -16,6 +28,9 @@ import { t } from './i18n/strings.ts'
 import { groupResults } from './lib/group.ts'
 import type { Filters, Group } from './lib/index-types.ts'
 import { applyFacets, countFacets, parseQuery, runQuery } from './lib/query.ts'
+import { readStoredRatings, storeRatings, toggleRating } from './lib/ratings.ts'
+import { buildProfileIndex, recommend } from './lib/recommend.ts'
+import { becauseYouLiked, docName } from './i18n/strings.ts'
 
 /**
  * Conjuntos vacíos a nivel de módulo, no creados en cada render.
@@ -43,6 +58,14 @@ export default function App() {
   const [groupBy, setGroupBy] = useState<GroupBy>(GROUP_BY.GENERATION)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [visibleRows, setVisibleRows] = useState(MAX_ROWS_INITIAL)
+  /**
+   * Qué pantalla se está viendo. Es lo único que el buscador y las estadísticas
+   * comparten: cada una mantiene su propio estado, y cambiar de vista no
+   * desmonta la otra, así que al volver siguen la consulta y los filtros.
+   */
+  const [view, setView] = useState<View>(VIEW.SEARCH)
+  /** Lo valorado, inicializado con lo que se guardó en visitas anteriores. */
+  const [ratings, setRatings] = useState(() => readStoredRatings())
 
   const filters = useMemo<Filters>(() => ({ types: selTypes, gens: selGens }), [selTypes, selGens])
 
@@ -69,6 +92,20 @@ export default function App() {
   const filtered = useMemo(
     () => (index === null || matched === null ? null : applyFacets(index, matched, filters)),
     [index, matched, filters],
+  )
+
+  /**
+   * El índice directo del recomendador: documento → términos que lo describen.
+   *
+   * Aparte de la cadena de arriba porque no depende de la consulta: solo del
+   * índice. Cuesta 1 ms, y recomendar sobre él 0,03 ms, así que valorar algo
+   * recalcula la fila sin que se note.
+   */
+  const profile = useMemo(() => (index === null ? null : buildProfileIndex(index)), [index])
+
+  const recommended = useMemo(
+    () => (index === null || profile === null ? null : recommend(index, profile, ratings)),
+    [index, profile, ratings],
   )
 
   const groups = useMemo(
@@ -134,6 +171,14 @@ export default function App() {
   }, [resetPaging])
 
   /** "Ver el resto" de una fila: fija esa faceta y pasa a la cuadrícula plana. */
+  const handleRate = useCallback((pokeId: number, rating: Rating) => {
+    setRatings((current) => {
+      const next = toggleRating(current, pokeId, rating)
+      storeRatings(next)
+      return next
+    })
+  }, [])
+
   const handleSeeRest = useCallback(
     (group: Group) => {
       if (group.key.kind === 'type') setSelTypes(new Set([group.key.typeId]))
@@ -158,6 +203,24 @@ export default function App() {
           PokeAPI
         </a>
       </p>
+
+      <div className="segmented segmented--views" role="group" aria-label={t(lang, 'viewSearch')}>
+        {[
+          { value: VIEW.SEARCH, label: t(lang, 'viewSearch') },
+          { value: VIEW.STATS, label: t(lang, 'viewStats') },
+          { value: VIEW.GRAPH, label: t(lang, 'viewGraph') },
+        ].map((o) => (
+          <button
+            aria-pressed={view === o.value}
+            className={`segmented__option${view === o.value ? ' segmented__option--active' : ''}`}
+            key={o.value}
+            onClick={() => setView(o.value)}
+            type="button"
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </header>
   )
 
@@ -183,6 +246,31 @@ export default function App() {
   const visible = results.slice(0, visibleCount)
   const remaining = results.length - visible.length
   const showSuggestion = matched?.suggestion != null && matched.stats.usedFuzzy
+
+  if (view === VIEW.GRAPH) {
+    return (
+      <div className="app">
+        {header}
+        <GraphExplorer
+          activeTypes={selTypes}
+          index={index}
+          lang={lang}
+          onRate={handleRate}
+          onToggleType={handleToggleType}
+          ratings={ratings}
+        />
+      </div>
+    )
+  }
+
+  if (view === VIEW.STATS) {
+    return (
+      <div className="app">
+        {header}
+        <StatsPanel index={index} lang={lang} />
+      </div>
+    )
+  }
 
   return (
     <div className="app">
@@ -225,6 +313,27 @@ export default function App() {
           a sus términos informativos y conviene enseñar con cuáles se buscó. */}
       {matched?.reduction && <ReductionPanel lang={lang} reduction={matched.reduction} />}
 
+      {/* La fila de recomendaciones va AQUÍ, antes del ternario de resultados, y
+          no dentro de los grupos: así sobrevive al caso de «sin resultados»,
+          que es justo cuando una recomendación vale más. */}
+      {recommended && recommended.docIds.length > 0 && (
+        <PokemonRow
+          activeTypes={selTypes}
+          group={{ key: { kind: 'all' }, docIds: recommended.docIds }}
+          index={index}
+          lang={lang}
+          onRate={handleRate}
+          onSeeRest={() => undefined}
+          onToggleType={handleToggleType}
+          ratings={ratings}
+          title={
+            recommended.because === null
+              ? t(lang, 'recommendedTitle')
+              : becauseYouLiked(lang, docName(index.docs[recommended.because]!, lang))
+          }
+        />
+      )}
+
       {import.meta.env.DEV && matched && (
         <DebugPanel index={index.stats} query={matched.stats} results={results.length} />
       )}
@@ -248,7 +357,9 @@ export default function App() {
             index={index}
             lang={lang}
             matches={matched?.reduction?.matches ?? null}
+            onRate={handleRate}
             onToggleType={handleToggleType}
+            ratings={ratings}
           />
           {remaining > 0 && (
             <button
@@ -267,7 +378,9 @@ export default function App() {
           index={index}
           lang={lang}
           matches={matched?.reduction?.matches ?? null}
+          onRate={handleRate}
           onSeeRest={handleSeeRest}
+          ratings={ratings}
           onShowMoreRows={() => setVisibleRows((rows) => rows + ROWS_STEP)}
           onToggleType={handleToggleType}
           visibleRows={visibleRows}

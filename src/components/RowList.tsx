@@ -1,3 +1,4 @@
+import type { Rating } from '../constants.ts'
 import { t } from '../i18n/strings.ts'
 import type { Lang } from '../i18n/strings.ts'
 import type { Group, PokedexIndex } from '../lib/index-types.ts'
@@ -14,6 +15,9 @@ interface RowListProps {
   onSeeRest: (group: Group) => void
   /** `docId -> términos`, solo cuando los resultados vienen de una descripción. */
   matches?: ReadonlyMap<number, readonly string[]> | null
+  /** Valoraciones y cómo cambiarlas; opcionales, igual que en la tarjeta. */
+  ratings?: ReadonlyMap<number, Rating> | undefined
+  onRate?: ((pokeId: number, rating: Rating) => void) | undefined
 }
 
 /**
@@ -35,6 +39,8 @@ export function RowList({
   activeTypes,
   onSeeRest,
   matches,
+  ratings,
+  onRate,
 }: RowListProps) {
   const shown = groups.slice(0, visibleRows)
   const hidden = groups.length - shown.length
@@ -49,7 +55,9 @@ export function RowList({
           key={`${group.key.kind}-${JSON.stringify(group.key)}`}
           lang={lang}
           matches={matches}
+          onRate={onRate}
           onSeeRest={onSeeRest}
+          ratings={ratings}
           onToggleType={onToggleType}
         />
       ))}

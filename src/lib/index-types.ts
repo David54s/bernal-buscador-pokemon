@@ -152,6 +152,33 @@ export interface PokedexIndex {
 
   /* Nivel 0 y filtrado. */
   byPokeId: Map<number, number>
+
+  /**
+   * EL GRAFO EVOLUTIVO, en las dos direcciones.
+   *
+   * Las claves y los valores son docId de la forma BASE de cada especie, porque
+   * evolucionar es una propiedad de la especie: Charizard Mega X no evoluciona
+   * de nada, Charizard sí.
+   *
+   * El corpus guarda solo la arista hacia atrás; la de ida se deriva aquí
+   * invirtiéndola, de modo que no pueden contradecirse.
+   */
+  evolvesFrom: Map<number, number>
+  evolvesTo: Map<number, number[]>
+
+  /**
+   * De cada especie, el documento que la representa: aquél cuyo número de
+   * Pokédex ES el de la especie.
+   *
+   * Hace falta porque las propiedades de especie —la evolución— se consultan
+   * sobre ese documento, no sobre una forma Mega. Y no se puede deducir de
+   * `byPokeId`, que mapea TODOS los documentos: para una forma alterna
+   * `byPokeId.get(doc.pokeId)` devuelve esa misma forma, no su base.
+   */
+  speciesBase: Map<number, number>
+
+  /** Documentos de cada color, como `byType` lo es de cada tipo. */
+  byColor: Map<number, number[]>
   byType: Map<number, number[]>
   byGen: Map<number, number[]>
 

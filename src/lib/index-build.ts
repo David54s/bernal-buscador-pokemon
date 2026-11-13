@@ -206,6 +206,9 @@ export function buildIndex(corpus: Corpus): PokedexIndex {
   const byType = new Map<number, number[]>()
   const byGen = new Map<number, number[]>()
   const byPokeId = new Map<number, number>()
+  const speciesBase = new Map<number, number>()
+  const evolvesFrom = new Map<number, number>()
+  const evolvesTo = new Map<number, number[]>()
 
   for (const doc of docs) {
     byPokeId.set(doc.pokeId, doc.docId)
@@ -296,6 +299,39 @@ export function buildIndex(corpus: Corpus): PokedexIndex {
         if (!facetOrigin.has(token)) facetOrigin.set(token, genusOrigin)
       }
     }
+  }
+
+  /* --- El grafo evolutivo ------------------------------------------------- */
+
+  /**
+   * El corpus guarda `evo` como el ID DE ESPECIE del predecesor. Para la forma
+   * base de una especie ese id coincide con su número de Pokédex, así que
+   * `byPokeId` lo traduce a docId sin tener que buscar nada.
+   *
+   * Las especies de un corpus anterior no traen `evo`: entonces los dos mapas
+   * quedan vacíos y el grafo simplemente no tiene aristas de evolución.
+   */
+  for (const doc of docs) {
+    const species = corpus.species[doc.speciesIdx]
+    if (species !== undefined && doc.pokeId === species.id) {
+      speciesBase.set(doc.speciesIdx, doc.docId)
+    }
+  }
+
+  for (const doc of docs) {
+    const species = corpus.species[doc.speciesIdx]
+    if (species?.evo === undefined || doc.pokeId !== species.id) continue
+
+    const parent = byPokeId.get(species.evo)
+    if (parent === undefined) continue
+
+    evolvesFrom.set(doc.docId, parent)
+    let children = evolvesTo.get(parent)
+    if (children === undefined) {
+      children = []
+      evolvesTo.set(parent, children)
+    }
+    children.push(doc.docId)
   }
 
   const facets = seal(facetMap)
@@ -417,6 +453,10 @@ export function buildIndex(corpus: Corpus): PokedexIndex {
     textTerms: texts.terms,
     textPostings: texts.postings,
     byPokeId,
+    speciesBase,
+    byColor,
+    evolvesFrom,
+    evolvesTo,
     byType,
     byGen,
     canonicalOrder,

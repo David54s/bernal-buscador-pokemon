@@ -761,3 +761,564 @@ a {
   font-size: 0.76rem;
   color: var(--text-soft);
 }
+
+/* --- Vista de estadísticas -------------------------------------------------- */
+
+.segmented--views {
+  margin-top: 0.9rem;
+  justify-content: center;
+}
+
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.stats__corpus {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.stats__card {
+  padding: 1rem 1.1rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* El explorador ocupa el ancho entero: su lista de documentos es larga. */
+.stats__card--wide {
+  grid-column: 1 / -1;
+}
+
+.stats__title {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.stats__lead {
+  margin: 0 0 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.stats__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin: 0.9rem 0 0;
+}
+
+.stats__figures div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.stats__figures dt {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+}
+
+.stats__figures dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.stats__note {
+  margin: 0.7rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.stats__predict {
+  margin: 0.7rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats__table {
+  width: 100%;
+  margin-top: 0.9rem;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats__table caption {
+  margin-bottom: 0.4rem;
+  text-align: left;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.stats__table th,
+.stats__table td {
+  padding: 0.22rem 0.4rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+
+.stats__table th:nth-child(2),
+.stats__table td:nth-child(2) {
+  text-align: left;
+}
+
+.stats__table th {
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.stats__term {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* --- Las gráficas ----------------------------------------------------------- */
+
+.chart {
+  margin: 0.9rem 0 0;
+}
+
+.chart__svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Todo el dibujo se apoya en las variables del tema, así que claro y oscuro
+   salen de la misma regla. */
+.chart__grid line {
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+
+.chart__axis line {
+  stroke: var(--text-soft);
+  stroke-width: 0.8;
+}
+
+.chart__ticks text,
+.chart__label {
+  fill: var(--text-soft);
+  font-size: 7px;
+}
+
+/* La recta de la ley, discontinua y por debajo: lo que se juzga es si los datos
+   la siguen, así que no debe competir con ellos. */
+.chart__fit {
+  fill: none;
+  stroke: var(--text-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.8;
+}
+
+.chart__data {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.chart__highlight {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.chart__caption {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+/* --- Explorador del índice -------------------------------------------------- */
+
+.explorer__field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.9rem 0 0;
+}
+
+.explorer__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+}
+
+.explorer__input {
+  flex: 0 1 16rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.explorer__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.explorer__examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+/* Sin ellos nadie descubre el caso interesante; con ellos la demostración se
+   cuenta sola. */
+.explorer__example {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.74rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.explorer__example:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.explorer__table {
+  max-width: 34rem;
+}
+
+.explorer__dicts {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.explorer__dict {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.explorer__dict--text {
+  background: var(--skeleton);
+  color: var(--text-soft);
+}
+
+/* La lista de postings en crudo: enteros ordenados, que es como el motor la
+   recorre. Verla es la mitad del argumento. */
+.explorer__postings {
+  margin: 0.9rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+
+.explorer__docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.explorer__doc {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.76rem;
+}
+
+/* --- Valorar un Pokémon ----------------------------------------------------- */
+
+.card__rate {
+  display: flex;
+  justify-content: center;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+
+/* Conmutadores, no acciones: volver a pulsar el activo quita la valoración, y
+   por eso llevan `aria-pressed` y un estado visible. */
+.card__rate-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background-color 0.12s;
+}
+
+.card__rate-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.card__rate-button--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* El rechazo activo se atenúa en vez de acentuarse: marcar algo como que no
+   gusta no es un logro que celebrar. */
+.card__rate-button--down.card__rate-button--on {
+  border-color: var(--text-soft);
+  background: var(--skeleton);
+  color: var(--text-soft);
+}
+
+.card__rate-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card__rate-button {
+    transition: none;
+  }
+}
+
+/* --- Grafo de seguimiento --------------------------------------------------- */
+
+.graph {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+/* El rastro: el camino andado, cada paso pulsable para volver. */
+.trail {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.trail__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.trail__steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trail__step {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.trail__edge {
+  font-size: 0.68rem;
+  color: var(--text-soft);
+}
+
+.trail__node {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.trail__node:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* El paso actual no es pulsable en la práctica: se marca y se deja quieto. */
+.trail__node--current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: default;
+}
+
+.graph__focus {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.graph__focus-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.graph__edge {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.graph__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Un tipo no tiene sprite ni número, así que se pinta como pastilla de color y
+   no como tarjeta: la forma dice de qué clase de nodo se trata. */
+.graph__chip {
+  padding: 0.3rem 0.8rem;
+  border: none;
+  border-radius: 999px;
+  color: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph__chip:hover {
+  filter: brightness(1.1);
+}
+
+.graph__chip--ghost {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft);
+  font-weight: 500;
+}
+
+.graph__restart {
+  margin: 0;
+}
+
+/* Toda la tarjeta navega, sin añadir un botón que compita con los de valorar.
+   Se superpone por debajo de ellos en el apilado. */
+.card {
+  position: relative;
+}
+
+.card__navigate {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.card__navigate:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 14px;
+}
+
+.card__rate,
+.card__name,
+.card__id,
+.tag {
+  position: relative;
+  z-index: 1;
+}
+
+/* El recorrido puede hacerse largo, así que se desplaza en horizontal en vez de
+   envolverse: así la tira ocupa siempre lo mismo y el último visitado queda a la
+   vista sin empujar el resto de la página. */
+.trail__steps {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 0.2rem;
+}
+
+.trail__step {
+  flex: 0 0 auto;
+}
+
+.trail__clear {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.trail__clear:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

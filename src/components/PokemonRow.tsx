@@ -1,3 +1,4 @@
+import type { Rating } from '../constants.ts'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ROW_PAGE_SIZE } from '../constants.ts'
 import { groupLabel, t } from '../i18n/strings.ts'
@@ -16,6 +17,18 @@ interface PokemonRowProps {
   onSeeRest: (group: Group) => void
   /** `docId -> términos`, solo cuando los resultados vienen de una descripción. */
   matches?: ReadonlyMap<number, readonly string[]> | null
+  /**
+   * Un encabezado propio en vez del que sale de la clave de grupo.
+   *
+   * Lo usa la fila de recomendaciones, cuyo título no describe un grupo del
+   * catálogo sino el motivo: «Porque te gustó Charmander».
+   */
+  title?: string | undefined
+  /** Saltar a un Pokémon en el grafo; solo lo pasa la vista de exploración. */
+  onNavigate?: ((docId: number) => void) | undefined
+  /** Valoraciones y cómo cambiarlas; opcionales, igual que en la tarjeta. */
+  ratings?: ReadonlyMap<number, Rating> | undefined
+  onRate?: ((pokeId: number, rating: Rating) => void) | undefined
 }
 
 /** Cuánto desplaza cada flecha: algo menos de una pantalla, para no perder el hilo. */
@@ -35,6 +48,10 @@ export function PokemonRow({
   activeTypes,
   onSeeRest,
   matches,
+  ratings,
+  onRate,
+  title,
+  onNavigate,
 }: PokemonRowProps) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [canLeft, setCanLeft] = useState(false)
@@ -122,7 +139,7 @@ export function PokemonRow({
     <section aria-labelledby={headingId} className="row">
       <div className="row__head">
         <h2 className="row__title" id={headingId}>
-          {groupLabel(index, group.key, lang)}
+          {title ?? groupLabel(index, group.key, lang)}
         </h2>
         <span className="row__count">{group.docIds.length}</span>
 
@@ -167,7 +184,10 @@ export function PokemonRow({
             key={docId}
             lang={lang}
             matchedTerms={matches?.get(docId)}
+            onNavigate={onNavigate}
+            onRate={onRate}
             onToggleType={onToggleType}
+            rating={ratings?.get(index.docs[docId]?.pokeId ?? -1)}
           />
         ))}
 
